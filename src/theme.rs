@@ -54,7 +54,7 @@ pub struct ThemeDecorations {
 
 impl ThemeDecorations {
     /// 라이트 테마 기본 장식 값을 반환한다.
-    pub const fn light() -> Self {
+    pub fn light() -> Self {
         Self {
             card_rounding: 18.0,
             container_rounding: 20.0,

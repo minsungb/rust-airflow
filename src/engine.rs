@@ -6,10 +6,10 @@ use futures::stream::FuturesUnordered;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 use tokio::fs;
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
+use tokio_util::codec::{FramedRead, LinesCodec};
 use tokio_util::sync::CancellationToken;
 
 /// 엔진에서 UI로 전달되는 주요 이벤트 모델이다.
@@ -437,11 +437,22 @@ async fn pipe_forwarder<R>(
 ) where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
 {
-    let mut lines = BufReader::new(reader).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        let _ = sender.send(EngineEvent::StepLog {
-            step_id: step_id.clone(),
-            line: format!("{tag}: {line}"),
-        });
+    let mut lines = FramedRead::new(reader, LinesCodec::new());
+    while let Some(line_result) = lines.next().await {
+        match line_result {
+            Ok(line) => {
+                let _ = sender.send(EngineEvent::StepLog {
+                    step_id: step_id.clone(),
+                    line: format!("{tag}: {line}"),
+                });
+            }
+            Err(err) => {
+                let _ = sender.send(EngineEvent::StepLog {
+                    step_id: step_id.clone(),
+                    line: format!("{tag} 읽기 오류: {err}"),
+                });
+                break;
+            }
+        }
     }
 }
