@@ -3,23 +3,7 @@ use eframe::egui::{self, Color32};
 
 include!(concat!(env!("OUT_DIR"), "/custom_font.rs"));
 
-/// 버튼, 섹션 헤더 등에 사용할 그라데이션 정보를 정의한다.
-#[derive(Clone, Copy, Debug)]
-pub struct ThemeGradient {
-    /// 그라데이션 시작 색.
-    pub start: Color32,
-    /// 그라데이션 종료 색.
-    pub end: Color32,
-}
-
-impl ThemeGradient {
-    /// 지정된 시작/종료 색으로 새로운 그라데이션을 생성한다.
-    pub const fn new(start: Color32, end: Color32) -> Self {
-        Self { start, end }
-    }
-}
-
-/// 테마와 관련된 여백, 모서리, 그라데이션 설정을 담는다.
+/// 테마와 관련된 여백, 모서리, 색상 설정을 담는다.
 #[derive(Clone, Copy, Debug)]
 pub struct ThemeDecorations {
     /// 카드와 패널에 적용할 라운딩 값.
@@ -42,12 +26,10 @@ pub struct ThemeDecorations {
     pub header_height: f32,
     /// 헤더 아이콘 크기.
     pub header_icon_size: f32,
-    /// 프라이머리 버튼용 그라데이션.
-    pub primary_button_gradient: ThemeGradient,
-    /// 섹션 헤더용 그라데이션.
-    pub section_header_gradient: ThemeGradient,
-    /// 툴바 배경 그라데이션.
-    pub toolbar_gradient: ThemeGradient,
+    /// 섹션 헤더 배경 색.
+    pub header_fill: Color32,
+    /// 섹션 헤더 텍스트 색.
+    pub header_text: Color32,
     /// 카드 안쪽 여백.
     pub card_inner_margin: egui::Margin,
 }
@@ -66,19 +48,9 @@ impl ThemeDecorations {
             button_gap: 16.0,
             header_height: 42.0,
             header_icon_size: 24.0,
-            primary_button_gradient: ThemeGradient::new(
-                Color32::from_rgb(255, 153, 102),
-                Color32::from_rgb(255, 94, 142),
-            ),
-            section_header_gradient: ThemeGradient::new(
-                Color32::from_rgb(108, 173, 255),
-                Color32::from_rgb(138, 255, 219),
-            ),
-            toolbar_gradient: ThemeGradient::new(
-                Color32::from_rgb(255, 255, 255),
-                Color32::from_rgb(236, 243, 255),
-            ),
-            card_inner_margin: egui::Margin::symmetric(0.0, 0.0),
+            header_fill: Color32::from_rgb(76, 128, 255),
+            header_text: Color32::from_rgb(255, 255, 255),
+            card_inner_margin: egui::Margin::symmetric(18.0, 16.0),
         }
     }
 }
@@ -127,20 +99,20 @@ impl ThemePalette {
     /// 라이트 테마용 파스텔 팔레트를 반환한다.
     pub const fn light() -> Self {
         Self {
-            bg_main: Color32::from_rgb(246, 249, 255),
-            bg_panel: Color32::from_rgb(255, 255, 255),
-            bg_toolbar: Color32::from_rgb(241, 247, 255),
-            bg_sidebar: Color32::from_rgb(248, 250, 255),
-            bg_log: Color32::from_rgb(243, 246, 255),
-            fg_text_primary: Color32::from_rgb(36, 42, 64),
-            fg_text_secondary: Color32::from_rgb(97, 104, 134),
-            accent_primary: Color32::from_rgb(120, 115, 255),
-            accent_success: Color32::from_rgb(32, 201, 151),
-            accent_warning: Color32::from_rgb(255, 173, 73),
-            accent_error: Color32::from_rgb(255, 99, 132),
-            border_soft: Color32::from_rgb(215, 224, 255),
-            accent_pending: Color32::from_rgb(205, 211, 230),
-            icon_emphasis: Color32::from_rgb(56, 149, 255),
+            bg_main: Color32::from_rgb(240, 240, 240),
+            bg_panel: Color32::from_rgb(250, 250, 250),
+            bg_toolbar: Color32::from_rgb(245, 245, 245),
+            bg_sidebar: Color32::from_rgb(248, 248, 248),
+            bg_log: Color32::from_rgb(255, 255, 255),
+            fg_text_primary: Color32::from_rgb(51, 51, 51),
+            fg_text_secondary: Color32::from_rgb(102, 102, 102),
+            accent_primary: Color32::from_rgb(76, 128, 255),
+            accent_success: Color32::from_rgb(76, 175, 80),
+            accent_warning: Color32::from_rgb(255, 191, 0),
+            accent_error: Color32::from_rgb(234, 67, 53),
+            border_soft: Color32::from_rgb(210, 210, 210),
+            accent_pending: Color32::from_rgb(189, 189, 189),
+            icon_emphasis: Color32::from_rgb(76, 128, 255),
         }
     }
 }

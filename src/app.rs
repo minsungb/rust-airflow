@@ -231,8 +231,9 @@ impl BatchOrchestratorApp {
 
     /// 좌측 Step 리스트 패널을 그린다.
     fn render_step_panel(&mut self, ui: &mut egui::Ui) {
-        gradient_section_header(ui, &self.theme, "🧭", "작업 단계");
-        ui.add_space(10.0);
+        solid_section_header(ui, &self.theme, "🧭", "작업 단계");
+        ui.add_space(12.0);
+        ui.spacing_mut().item_spacing.y = 12.0;
         let palette = *self.theme.palette();
         let decorations = *self.theme.decorations();
         if let Some(scenario) = &self.scenario {
@@ -324,7 +325,7 @@ impl BatchOrchestratorApp {
 
     /// Step 상세 정보를 표시한다.
     fn render_step_detail(&self, ui: &mut egui::Ui) {
-        gradient_section_header(ui, &self.theme, "🧩", "Step 정보");
+        solid_section_header(ui, &self.theme, "🧩", "Step 정보");
         ui.add_space(10.0);
         let palette = *self.theme.palette();
         if let Some(step_id) = &self.selected_step {
@@ -387,7 +388,7 @@ impl BatchOrchestratorApp {
 
     /// 로그 영역을 렌더링한다.
     fn render_log_panel(&self, ui: &mut egui::Ui) {
-        gradient_section_header(ui, &self.theme, "📝", "로그");
+        solid_section_header(ui, &self.theme, "📝", "로그");
         ui.add_space(8.0);
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
@@ -404,14 +405,7 @@ impl BatchOrchestratorApp {
     fn render_toolbar(&mut self, ui: &mut egui::Ui) {
         let decorations = *self.theme.decorations();
         let palette = *self.theme.palette();
-        let rect = ui.max_rect();
-        paint_horizontal_gradient(
-            ui.painter(),
-            rect,
-            egui::Rounding::same(decorations.toolbar_rounding),
-            decorations.toolbar_gradient.start,
-            decorations.toolbar_gradient.end,
-        );
+        ui.set_min_height(220.0);
         ui.vertical(|ui| {
             ui.label(
                 RichText::new("✨ Rust Batch Orchestrator")
@@ -419,42 +413,58 @@ impl BatchOrchestratorApp {
                     .color(palette.fg_text_primary)
                     .strong(),
             );
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new("Rust 기반 배치 시나리오를 안전하게 실행하세요.")
+                    .color(palette.fg_text_secondary),
+            );
             ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = decorations.button_gap;
-                if ui
-                    .add(GradientButton::new(&self.theme, "시나리오 열기").icon("📂"))
-                    .clicked()
-                {
-                    self.load_scenario_from_dialog();
-                }
-                ui.add_enabled_ui(self.scenario.is_some() && !self.scenario_running, |ui| {
-                    if ui
-                        .add(GradientButton::new(&self.theme, "실행").icon("▶"))
-                        .clicked()
-                    {
-                        self.start_scenario();
-                    }
-                });
-                ui.add_enabled_ui(self.scenario_running, |ui| {
-                    if ui
-                        .add(GradientButton::new(&self.theme, "정지").icon("⏹"))
-                        .clicked()
-                    {
-                        self.stop_scenario();
-                    }
-                });
-            });
-            ui.add_space(8.0);
             if let Some(path) = &self.scenario_path {
                 ui.label(
                     RichText::new(format!("로드됨 · {}", path.display()))
                         .color(palette.fg_text_secondary),
                 );
+            } else {
+                ui.label(
+                    RichText::new("시나리오 파일을 선택해 시작하세요.")
+                        .color(palette.fg_text_secondary),
+                );
             }
             if let Some(err) = &self.last_error {
+                ui.add_space(4.0);
                 ui.label(RichText::new(err).color(palette.accent_error).strong());
             }
+            ui.add_space(16.0);
+            let button_count = 3.0;
+            let button_stack_height = decorations.button_height * button_count
+                + decorations.button_gap * (button_count - 1.0);
+            let spacer = ui.available_height() - button_stack_height;
+            if spacer > 0.0 {
+                ui.add_space(spacer);
+            }
+            ui.spacing_mut().item_spacing.y = decorations.button_gap;
+            if ui
+                .add(PrimaryButton::new(&self.theme, "시나리오 열기").icon("📂"))
+                .clicked()
+            {
+                self.load_scenario_from_dialog();
+            }
+            ui.add_enabled_ui(self.scenario.is_some() && !self.scenario_running, |ui| {
+                if ui
+                    .add(PrimaryButton::new(&self.theme, "실행").icon("▶"))
+                    .clicked()
+                {
+                    self.start_scenario();
+                }
+            });
+            ui.add_enabled_ui(self.scenario_running, |ui| {
+                if ui
+                    .add(PrimaryButton::new(&self.theme, "정지").icon("⏹"))
+                    .clicked()
+                {
+                    self.stop_scenario();
+                }
+            });
         });
     }
 }
@@ -467,14 +477,15 @@ impl eframe::App for BatchOrchestratorApp {
         let palette = *self.theme.palette();
         let decorations = *self.theme.decorations();
         let toolbar_frame = egui::Frame {
-            fill: egui::Color32::from_rgb(241, 247, 255),
+            fill: palette.bg_toolbar,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
             rounding: egui::Rounding::same(decorations.toolbar_rounding),
-            inner_margin: egui::Margin::symmetric(20.0, 18.0),
+            inner_margin: egui::Margin::symmetric(20.0, 20.0),
             ..Default::default()
         };
         egui::TopBottomPanel::top("toolbar")
             .frame(toolbar_frame)
+            .resizable(false)
             .show(ctx, |ui| {
                 self.render_toolbar(ui);
             });
@@ -503,6 +514,7 @@ impl eframe::App for BatchOrchestratorApp {
             .frame(central_frame)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
+                    ui.spacing_mut().item_spacing.y = 18.0;
                     egui::Frame::none()
                         .fill(palette.bg_panel)
                         .stroke(egui::Stroke::new(1.0, palette.border_soft))
@@ -511,7 +523,6 @@ impl eframe::App for BatchOrchestratorApp {
                         .show(ui, |ui| {
                             self.render_step_detail(ui);
                         });
-                    ui.add_space(10.0);
                     egui::Frame::none()
                         .fill(palette.bg_log)
                         .stroke(egui::Stroke::new(1.0, palette.border_soft))
@@ -560,17 +571,24 @@ fn status_indicator(status: &StepStatus) -> (&'static str, &'static str) {
     }
 }
 
-/// 카드 상단에서 사용할 그라데이션 헤더를 그린다.
-fn gradient_section_header(ui: &mut egui::Ui, theme: &Theme, icon: &str, title: &str) {
+/// 단색 헤더를 그려 정보 영역의 시각적 위계를 만든다.
+fn solid_section_header(ui: &mut egui::Ui, theme: &Theme, icon: &str, title: &str) {
     let decorations = theme.decorations();
+    let palette = theme.palette();
     let size = egui::vec2(ui.available_width(), decorations.header_height);
     let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-    paint_horizontal_gradient(
-        ui.painter(),
+    ui.painter().rect_filled(
         rect,
         egui::Rounding::same(decorations.header_rounding),
-        decorations.section_header_gradient.start,
-        decorations.section_header_gradient.end,
+        decorations.header_fill,
+    );
+    ui.painter().rect_stroke(
+        rect,
+        egui::Rounding::same(decorations.header_rounding),
+        egui::Stroke::new(
+            1.0,
+            blend_color(decorations.header_fill, palette.bg_panel, 0.4),
+        ),
     );
     let content_rect = rect.shrink2(egui::vec2(16.0, 0.0));
     ui.allocate_ui_at_rect(content_rect, |ui| {
@@ -579,73 +597,28 @@ fn gradient_section_header(ui: &mut egui::Ui, theme: &Theme, icon: &str, title: 
                 ui.label(
                     RichText::new(icon)
                         .size(decorations.header_icon_size)
-                        .color(egui::Color32::WHITE),
+                        .color(decorations.header_text),
                 );
             }
             ui.add_space(8.0);
             ui.label(
                 RichText::new(title)
                     .size(18.0)
-                    .color(egui::Color32::WHITE)
+                    .color(decorations.header_text)
                     .strong(),
             );
         });
     });
 }
 
-/// 가로 방향으로 분할된 그라데이션을 그린다.
-fn paint_horizontal_gradient(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    rounding: egui::Rounding,
-    start: egui::Color32,
-    end: egui::Color32,
-) {
-    let segments = 32;
-    for i in 0..segments {
-        let t0 = i as f32 / segments as f32;
-        let t1 = (i + 1) as f32 / segments as f32;
-        let x0 = egui::lerp(rect.left()..=rect.right(), t0);
-        let x1 = egui::lerp(rect.left()..=rect.right(), t1);
-        let mut segment_rounding = egui::Rounding::ZERO;
-        if i == 0 {
-            segment_rounding.nw = rounding.nw;
-            segment_rounding.sw = rounding.sw;
-        }
-        if i == segments - 1 {
-            segment_rounding.ne = rounding.ne;
-            segment_rounding.se = rounding.se;
-        }
-        let segment_rect =
-            egui::Rect::from_min_max(egui::pos2(x0, rect.top()), egui::pos2(x1, rect.bottom()));
-        let color = lerp_color(start, end, (t0 + t1) * 0.5);
-        painter.rect_filled(segment_rect, segment_rounding, color);
-    }
-}
-
-/// 두 색상을 sRGB 공간에서 선형 보간한다.
-fn lerp_color(start: egui::Color32, end: egui::Color32, t: f32) -> egui::Color32 {
-    let mix = |a: u8, b: u8| -> u8 {
-        let af = a as f32;
-        let bf = b as f32;
-        (af + (bf - af) * t).clamp(0.0, 255.0).round() as u8
-    };
-    egui::Color32::from_rgba_unmultiplied(
-        mix(start.r(), end.r()),
-        mix(start.g(), end.g()),
-        mix(start.b(), end.b()),
-        mix(start.a(), end.a()),
-    )
-}
-
-/// 그라데이션 배경과 둥근 모서리를 가진 프라이머리 버튼 위젯.
-struct GradientButton<'a> {
+/// 단색 배경과 일정한 간격을 제공하는 기본 버튼 위젯.
+struct PrimaryButton<'a> {
     theme: &'a Theme,
     label: &'a str,
     icon: &'a str,
 }
 
-impl<'a> GradientButton<'a> {
+impl<'a> PrimaryButton<'a> {
     /// 버튼의 기본 정보를 생성한다.
     fn new(theme: &'a Theme, label: &'a str) -> Self {
         Self {
@@ -662,7 +635,7 @@ impl<'a> GradientButton<'a> {
     }
 }
 
-impl<'a> Widget for GradientButton<'a> {
+impl<'a> Widget for PrimaryButton<'a> {
     /// egui 위젯 트레이트를 구현하여 버튼을 화면에 그린다.
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let decorations = self.theme.decorations();
@@ -684,39 +657,28 @@ impl<'a> Widget for GradientButton<'a> {
             decorations.button_height,
         );
         let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
-        let mut start = decorations.primary_button_gradient.start;
-        let mut end = decorations.primary_button_gradient.end;
+        let mut fill = palette.accent_primary;
         if !enabled {
-            start = blend_color(start, palette.border_soft, 0.45);
-            end = blend_color(end, palette.border_soft, 0.45);
+            fill = blend_color(fill, palette.border_soft, 0.5);
+        } else if response.is_pointer_button_down_on() {
+            fill = blend_color(fill, palette.fg_text_primary, 0.2);
         } else if response.hovered() {
-            start = blend_color(start, palette.bg_panel, 0.15);
-            end = blend_color(end, palette.bg_panel, 0.05);
+            fill = blend_color(fill, palette.bg_panel, 0.2);
         }
-        if response.is_pointer_button_down_on() {
-            start = blend_color(start, palette.fg_text_primary, 0.1);
-            end = blend_color(end, palette.fg_text_primary, 0.1);
-        }
-        paint_horizontal_gradient(
-            ui.painter(),
+        ui.painter().rect_filled(
             rect,
             egui::Rounding::same(decorations.button_rounding),
-            start,
-            end,
+            fill,
         );
-        if enabled {
-            let highlight_rect =
-                egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.center().y));
-            ui.painter().rect_filled(
-                highlight_rect,
-                egui::Rounding::same(decorations.button_rounding),
-                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 25),
-            );
-        }
+        ui.painter().rect_stroke(
+            rect,
+            egui::Rounding::same(decorations.button_rounding),
+            egui::Stroke::new(1.0, blend_color(fill, palette.border_soft, 0.6)),
+        );
         let text_color = if enabled {
             egui::Color32::WHITE
         } else {
-            blend_color(palette.fg_text_secondary, palette.bg_panel, 0.2)
+            blend_color(palette.fg_text_secondary, palette.bg_panel, 0.4)
         };
         let content_rect = rect.shrink2(egui::vec2(button_padding, 0.0));
         ui.allocate_ui_at_rect(content_rect, |ui| {
