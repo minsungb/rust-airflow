@@ -3,6 +3,27 @@
 version = 4
 
 [[package]]
+name = "Rust-Airflow"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "eframe",
+ "futures",
+ "parking_lot",
+ "rfd",
+ "serde",
+ "serde_yaml",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "walkdir",
+ "winres",
+]
+
+[[package]]
 name = "ab_glyph"
 version = "0.2.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1897,27 +1918,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "windows-sys 0.48.0",
-]
-
-[[package]]
-name = "rust-airflow"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "eframe",
- "futures",
- "parking_lot",
- "rfd",
- "serde",
- "serde_yaml",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "walkdir",
- "winres",
 ]
 
 [[package]]
