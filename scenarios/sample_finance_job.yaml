@@ -1,0 +1,28 @@
+name: "sample_finance_job"
+steps:
+  - id: "01_extract"
+    name: "연도 추출 SQL 실행"
+    kind:
+      sql_file: "sql/01_extract_year.sql"
+    depends_on: []
+    allow_parallel: false
+    retry: 1
+    timeout_sec: 600
+
+  - id: "02_load_a"
+    name: "A 계정 적재(sqlldr)"
+    kind:
+      sqlldr_par: "par/1102_a.par"
+    depends_on: ["01_extract"]
+    allow_parallel: true
+    retry: 2
+    timeout_sec: 1200
+
+  - id: "03_load_b"
+    name: "B 계정 적재(sqlldr)"
+    kind:
+      sqlldr_par: "par/1102_b.par"
+    depends_on: ["01_extract"]
+    allow_parallel: true
+    retry: 2
+    timeout_sec: 1200
