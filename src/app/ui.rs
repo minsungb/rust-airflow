@@ -120,7 +120,7 @@ impl BatchOrchestratorApp {
     pub(super) fn render_toolbar(&mut self, ui: &mut egui::Ui) {
         let decorations = *self.theme.decorations();
         let palette = *self.theme.palette();
-        ui.set_min_height(150.0);
+        ui.set_min_height(130.0);
         ui.vertical(|ui| {
             ui.label(
                 RichText::new("✨ Rust Batch Orchestrator")
@@ -129,11 +129,6 @@ impl BatchOrchestratorApp {
                     .strong(),
             );
             ui.add_space(6.0);
-            ui.label(
-                RichText::new("Rust 기반 배치 시나리오를 안전하게 실행하세요.")
-                    .color(palette.fg_text_secondary),
-            );
-            ui.add_space(10.0);
             if let Some(path) = &self.scenario_path {
                 ui.label(
                     RichText::new(format!("로드됨 · {}", path.display()))
