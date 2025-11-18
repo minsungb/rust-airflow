@@ -1,14 +1,141 @@
 use crate::theme::{Theme, blend_color};
 use eframe::egui::{self, RichText, Widget};
 
+/// StepCard는 좌측 Step 리스트에서 재사용할 수 있는 공통 카드 레이아웃을 제공한다.
+pub(super) struct StepCard<'a> {
+    theme: &'a Theme,
+    name: &'a str,
+    step_id: &'a str,
+    status_icon: &'a str,
+    status_text: &'a str,
+    status_color: egui::Color32,
+    is_selected: bool,
+    height: f32,
+}
+
+impl<'a> StepCard<'a> {
+    /// StepCard 기본 구성을 생성하며 이름과 ID 정보를 설정한다.
+    pub(super) fn new(theme: &'a Theme, name: &'a str, step_id: &'a str) -> Self {
+        let fallback_color = theme.palette().fg_text_secondary;
+        Self {
+            theme,
+            name,
+            step_id,
+            status_icon: "",
+            status_text: "",
+            status_color: fallback_color,
+            is_selected: false,
+            height: 74.0,
+        }
+    }
+
+    /// 상태 아이콘/텍스트와 색상을 지정해 카드에 상태 강조를 적용한다.
+    pub(super) fn status(mut self, icon: &'a str, text: &'a str, color: egui::Color32) -> Self {
+        self.status_icon = icon;
+        self.status_text = text;
+        self.status_color = color;
+        self
+    }
+
+    /// 현재 카드가 선택되었는지 여부를 지정한다.
+    pub(super) fn selected(mut self, selected: bool) -> Self {
+        self.is_selected = selected;
+        self
+    }
+
+    /// 카드 높이를 조정해 다양한 레이아웃 요구를 맞춘다.
+    pub(super) fn height(mut self, height: f32) -> Self {
+        self.height = height;
+        self
+    }
+}
+
+impl<'a> Widget for StepCard<'a> {
+    /// egui Widget 구현을 통해 StepCard를 화면에 렌더링한다.
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let palette = *self.theme.palette();
+        let decorations = *self.theme.decorations();
+        let (rect, response) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), self.height),
+            egui::Sense::click(),
+        );
+
+        if ui.is_rect_visible(rect) {
+            let fill = if self.is_selected {
+                palette.bg_panel
+            } else {
+                palette.bg_sidebar
+            };
+            let stroke_color = if self.is_selected {
+                self.status_color
+            } else {
+                palette.border_soft
+            };
+            ui.painter().rect(
+                rect,
+                egui::Rounding::same(decorations.card_rounding),
+                fill,
+                egui::Stroke::new(1.5, stroke_color),
+            );
+            let indicator =
+                egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 5.0, rect.max.y));
+            ui.painter().rect_filled(
+                indicator,
+                egui::Rounding::same(decorations.card_rounding),
+                self.status_color,
+            );
+            let content_rect = rect.shrink2(egui::vec2(
+                decorations.card_inner_margin.left,
+                decorations.card_inner_margin.top,
+            ));
+            let mut content_ui = ui.child_ui(
+                content_rect,
+                egui::Layout::left_to_right(egui::Align::Center),
+            );
+            content_ui.spacing_mut().item_spacing.x = 14.0;
+            if !self.status_icon.is_empty() {
+                content_ui.label(
+                    RichText::new(self.status_icon)
+                        .size(26.0)
+                        .color(self.status_color),
+                );
+            }
+            content_ui.vertical(|ui| {
+                ui.label(
+                    RichText::new(self.name)
+                        .size(17.0)
+                        .color(palette.fg_text_primary)
+                        .strong(),
+                );
+                ui.label(
+                    RichText::new(format!("ID: {}", self.step_id)).color(palette.fg_text_secondary),
+                );
+            });
+            content_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if !self.status_text.is_empty() {
+                    ui.label(
+                        RichText::new(self.status_text)
+                            .size(15.0)
+                            .color(self.status_color)
+                            .strong(),
+                    );
+                }
+            });
+        }
+
+        response
+    }
+}
+
 /// 단색 배경과 일정한 간격을 제공하는 기본 버튼 위젯.
 pub(super) struct PrimaryButton<'a> {
     theme: &'a Theme,
     label: &'a str,
-    icon:  &'a str,
+    icon: &'a str,
 }
 
 impl<'a> PrimaryButton<'a> {
+    /// PrimaryButton 기본 인스턴스를 생성하며 라벨 텍스트를 지정한다.
     pub(super) fn new(theme: &'a Theme, label: &'a str) -> Self {
         Self {
             theme,
@@ -17,6 +144,7 @@ impl<'a> PrimaryButton<'a> {
         }
     }
 
+    /// 버튼 좌측에 표시할 아이콘 텍스트를 정의한다.
     pub(super) fn icon(mut self, icon: &'a str) -> Self {
         self.icon = icon;
         self
@@ -24,9 +152,10 @@ impl<'a> PrimaryButton<'a> {
 }
 
 impl<'a> Widget for PrimaryButton<'a> {
+    /// egui Widget 인터페이스를 구현해 기본 버튼을 렌더링한다.
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let decorations = self.theme.decorations();
-        let palette     = self.theme.palette();
+        let palette = self.theme.palette();
 
         let enabled = ui.is_enabled();
 
@@ -40,8 +169,8 @@ impl<'a> Widget for PrimaryButton<'a> {
         // 여기서 폰트 크기/굵기를 마음대로 설정
         let font_size = 16.0; // 원하는 크기
         let rich = egui::RichText::new(text)
-            .size(font_size)     // 글자 크기
-            .strong()            // 굵게
+            .size(font_size) // 글자 크기
+            .strong() // 굵게
             .color(if enabled {
                 egui::Color32::WHITE
             } else {
@@ -50,14 +179,17 @@ impl<'a> Widget for PrimaryButton<'a> {
 
         // 버튼 높이를 자동으로 글자 높이에 맞추기
         let text_height = ui.ctx().fonts(|f| {
-            f.row_height(&egui::FontId::new(font_size, egui::FontFamily::Proportional))
+            f.row_height(&egui::FontId::new(
+                font_size,
+                egui::FontFamily::Proportional,
+            ))
         });
         let button_height = decorations.button_height.max(text_height + 6.0);
 
         let mut button = egui::Button::new(rich)
             .min_size(egui::vec2(
                 decorations.button_min_width,
-                button_height,       // 글자 크기에 따라 자동 증가
+                button_height, // 글자 크기에 따라 자동 증가
             ))
             .rounding(egui::Rounding::same(decorations.button_rounding));
 

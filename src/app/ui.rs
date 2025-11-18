@@ -2,7 +2,7 @@ use crate::engine::StepStatus;
 use eframe::egui::{self, RichText};
 
 use super::state::BatchOrchestratorApp;
-use super::widgets::{PrimaryButton, solid_section_header};
+use super::widgets::{PrimaryButton, StepCard, solid_section_header};
 
 impl BatchOrchestratorApp {
     /// 좌측 Step 리스트 패널을 그린다.
@@ -18,71 +18,11 @@ impl BatchOrchestratorApp {
                 let status_color = self.theme.status_color(&state.status);
                 let (status_icon, status_text) = status_indicator(&state.status);
                 let is_selected = self.selected_step.as_deref() == Some(step.id.as_str());
-                let card_height = 74.0;
-                let (rect, response) = ui.allocate_exact_size(
-                    egui::vec2(ui.available_width(), card_height),
-                    egui::Sense::click(),
+                let response = ui.add(
+                    StepCard::new(&self.theme, step.name.as_str(), step.id.as_str())
+                        .status(status_icon, status_text, status_color)
+                        .selected(is_selected),
                 );
-                if ui.is_rect_visible(rect) {
-                    let fill = if is_selected {
-                        palette.bg_panel
-                    } else {
-                        palette.bg_sidebar
-                    };
-                    let stroke_color = if is_selected {
-                        status_color
-                    } else {
-                        palette.border_soft
-                    };
-                    ui.painter().rect(
-                        rect,
-                        egui::Rounding::same(decorations.card_rounding),
-                        fill,
-                        egui::Stroke::new(1.5, stroke_color),
-                    );
-                    let indicator = egui::Rect::from_min_max(
-                        rect.min,
-                        egui::pos2(rect.min.x + 5.0, rect.max.y),
-                    );
-                    ui.painter().rect_filled(
-                        indicator,
-                        egui::Rounding::same(decorations.card_rounding),
-                        status_color,
-                    );
-                    let content_rect = rect.shrink2(egui::vec2(
-                        decorations.card_inner_margin.left,
-                        decorations.card_inner_margin.top,
-                    ));
-                    let mut content_ui = ui.child_ui(
-                        content_rect,
-                        egui::Layout::left_to_right(egui::Align::Center),
-                    );
-                    content_ui.spacing_mut().item_spacing.x = 14.0;
-                    content_ui.label(RichText::new(status_icon).size(26.0).color(status_color));
-                    content_ui.vertical(|ui| {
-                        ui.label(
-                            RichText::new(&step.name)
-                                .size(17.0)
-                                .color(palette.fg_text_primary)
-                                .strong(),
-                        );
-                        ui.label(
-                            RichText::new(format!("ID: {}", step.id))
-                                .color(palette.fg_text_secondary),
-                        );
-                    });
-                    content_ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            ui.label(
-                                RichText::new(status_text)
-                                    .size(15.0)
-                                    .color(status_color)
-                                    .strong(),
-                            );
-                        },
-                    );
-                }
                 if response.clicked() {
                     self.selected_step = Some(step.id.clone());
                 }
@@ -199,11 +139,7 @@ impl BatchOrchestratorApp {
                 );
             }
             if let Some(err) = &self.last_error {
-                ui.label(
-                    RichText::new(err)
-                        .color(palette.accent_error)
-                        .strong(),
-                );
+                ui.label(RichText::new(err).color(palette.accent_error).strong());
                 ui.add_space(10.0);
             }
             ui.horizontal(|ui| {
@@ -218,10 +154,7 @@ impl BatchOrchestratorApp {
 
                 let can_run = self.scenario.is_some() && !self.scenario_running;
                 if ui
-                    .add_enabled(
-                        can_run,
-                        PrimaryButton::new(&self.theme, "실행").icon("▶"),
-                    )
+                    .add_enabled(can_run, PrimaryButton::new(&self.theme, "실행").icon("▶"))
                     .clicked()
                 {
                     self.start_scenario();
@@ -229,10 +162,7 @@ impl BatchOrchestratorApp {
 
                 let can_stop = self.scenario_running;
                 if ui
-                    .add_enabled(
-                        can_stop,
-                        PrimaryButton::new(&self.theme, "정지").icon("⏹"),
-                    )
+                    .add_enabled(can_stop, PrimaryButton::new(&self.theme, "정지").icon("⏹"))
                     .clicked()
                 {
                     self.stop_scenario();
@@ -297,18 +227,18 @@ impl eframe::App for BatchOrchestratorApp {
                             self.render_step_detail(ui);
                         });
                     egui::ScrollArea::vertical()
-                    .auto_shrink([false; 2]) // 작은 크기일 때 자동 축소 방지
-                    .max_height(400.0) // 최대 높이 설정
-                    .show(ui, |ui| {
-                        egui::Frame::none()
-                            .fill(palette.bg_log)
-                            .stroke(egui::Stroke::new(1.0, palette.border_soft))
-                            .rounding(egui::Rounding::same(decorations.card_rounding))
-                            .inner_margin(decorations.card_inner_margin)
-                            .show(ui, |ui| {
-                                self.render_log_panel(ui);
-                            });
-                    });
+                        .auto_shrink([false; 2]) // 작은 크기일 때 자동 축소 방지
+                        .max_height(400.0) // 최대 높이 설정
+                        .show(ui, |ui| {
+                            egui::Frame::none()
+                                .fill(palette.bg_log)
+                                .stroke(egui::Stroke::new(1.0, palette.border_soft))
+                                .rounding(egui::Rounding::same(decorations.card_rounding))
+                                .inner_margin(decorations.card_inner_margin)
+                                .show(ui, |ui| {
+                                    self.render_log_panel(ui);
+                                });
+                        });
                 });
             });
         let progress_frame = egui::Frame {
