@@ -18,7 +18,7 @@ fn embed_icon() {
         return;
     }
     let mut res = winres::WindowsResource::new();
-    res.set_icon(icon_path.to_string_lossy());
+    res.set_icon(icon_path.to_string_lossy().as_ref());
     res.compile().expect("아이콘 리소스 컴파일 실패");
 }
 

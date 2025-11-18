@@ -4,6 +4,7 @@ mod executor;
 mod scenario;
 mod theme;
 
+use eframe::egui;
 use app::BatchOrchestratorApp;
 
 /// 메인 진입점으로 egui 애플리케이션을 실행한다.

@@ -64,13 +64,18 @@ impl BatchOrchestratorApp {
 
     /// 엔진 이벤트를 모두 소비하여 UI 상태를 동기화한다.
     fn drain_events(&mut self) {
-        if let Some(rx) = &mut self.events_rx {
+        // events_rx를 일단 self에서 빼내서 소유권을 가져온다.
+        if let Some(mut rx) = self.events_rx.take() {
             while let Ok(event) = rx.try_recv() {
                 match event {
-                    EngineEvent::StepStarted { step_id } => self.mark_step_running(&step_id),
-                    EngineEvent::StepLog { step_id, line } => self.push_log(&step_id, line),
+                    EngineEvent::StepStarted { step_id } => {
+                        self.mark_step_running(&step_id);
+                    }
+                    EngineEvent::StepLog { step_id, line } => {
+                        self.push_log(&step_id, line);
+                    }
                     EngineEvent::StepFinished { step_id, success } => {
-                        self.mark_step_finished(&step_id, success)
+                        self.mark_step_finished(&step_id, success);
                     }
                     EngineEvent::ScenarioFinished => {
                         self.scenario_running = false;
@@ -78,8 +83,12 @@ impl BatchOrchestratorApp {
                     }
                 }
             }
+
+            // 다 처리한 뒤에 다시 self 안에 되돌려 놓는다.
+            self.events_rx = Some(rx);
         }
     }
+
 
     /// Step 상태를 Running으로 갱신한다.
     fn mark_step_running(&mut self, step_id: &str) {
