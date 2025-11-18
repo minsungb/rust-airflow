@@ -26,20 +26,20 @@ name: "sample_finance_job"
 steps:
   - id: "01_extract"
     name: "연도 추출 SQL 실행"
-    kind:
-      sql_file: "sql/01_extract_year.sql"
+    kind: sql_file
+    sql_file: "sql/01_extract_year.sql"
     depends_on: []
     allow_parallel: false
     retry: 1
     timeout_sec: 600
 ```
 
-`kind`는 `sql`, `sql_file`, `sqlldr_par`, `shell` 중 하나를 선택하며, Kind별 설정은 동일 레벨에 추가 필드로 작성합니다.
+`kind`는 `sql`, `sql_file`, `sql_loader_par`, `shell` 중 하나를 선택하며, Kind별 설정은 동일 레벨에 추가 필드로 작성합니다.
 
 ```yaml
   - id: load_customer
     name: 고객 마스터 적재
-    kind: sqlldr_par
+    kind: sql_loader_par
     sqlldr:
       conn: "APP_USER/secret@ORCLPDB1"
       control_file: "/app/batch/ctl/customer.ctl"
