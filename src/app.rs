@@ -1,8 +1,8 @@
 use crate::engine::{EngineEvent, StepRuntimeState, StepStatus, run_scenario};
 use crate::executor::{DummyExecutor, SharedExecutor};
 use crate::scenario::{Scenario, load_scenario_from_file};
-use crate::theme::Theme;
-use eframe::egui;
+use crate::theme::{Theme, blend_color};
+use eframe::egui::{self, RichText, Widget};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -231,8 +231,10 @@ impl BatchOrchestratorApp {
 
     /// 좌측 Step 리스트 패널을 그린다.
     fn render_step_panel(&mut self, ui: &mut egui::Ui) {
-        ui.heading("Steps");
-        ui.add_space(6.0);
+        gradient_section_header(ui, &self.theme, "🧭", "작업 단계");
+        ui.add_space(10.0);
+        let palette = *self.theme.palette();
+        let decorations = *self.theme.decorations();
         if let Some(scenario) = &self.scenario {
             for step in &scenario.steps {
                 let state = self
@@ -240,33 +242,91 @@ impl BatchOrchestratorApp {
                     .get(&step.id)
                     .cloned()
                     .unwrap_or_else(StepRuntimeState::new);
-                let color = self.theme.status_color(&state.status);
-                let label = format!("{} · {}", step.id, step.name);
-                let selectable = egui::SelectableLabel::new(
-                    self.selected_step.as_deref() == Some(step.id.as_str()),
-                    label,
+                let status_color = self.theme.status_color(&state.status);
+                let (status_icon, status_text) = status_indicator(&state.status);
+                let is_selected = self.selected_step.as_deref() == Some(step.id.as_str());
+                let card_height = 74.0;
+                let (rect, response) = ui.allocate_exact_size(
+                    egui::vec2(ui.available_width(), card_height),
+                    egui::Sense::click(),
                 );
-                let response = ui
-                    .add(selectable)
-                    .on_hover_text(format!("상태: {:?}", state.status));
-                let rect = response.rect;
-                let painter = ui.painter();
-                let indicator =
-                    egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 4.0, rect.max.y));
-                painter.rect_filled(indicator, 2.0, color);
-
+                if ui.is_rect_visible(rect) {
+                    let fill = if is_selected {
+                        palette.bg_panel
+                    } else {
+                        palette.bg_sidebar
+                    };
+                    let stroke_color = if is_selected {
+                        status_color
+                    } else {
+                        palette.border_soft
+                    };
+                    ui.painter().rect(
+                        rect,
+                        egui::Rounding::same(decorations.card_rounding),
+                        fill,
+                        egui::Stroke::new(1.5, stroke_color),
+                    );
+                    let indicator = egui::Rect::from_min_max(
+                        rect.min,
+                        egui::pos2(rect.min.x + 5.0, rect.max.y),
+                    );
+                    ui.painter().rect_filled(
+                        indicator,
+                        egui::Rounding::same(decorations.card_rounding),
+                        status_color,
+                    );
+                    let content_rect = rect.shrink2(egui::vec2(
+                        decorations.card_inner_margin.left,
+                        decorations.card_inner_margin.top,
+                    ));
+                    let mut content_ui = ui.child_ui(
+                        content_rect,
+                        egui::Layout::left_to_right(egui::Align::Center),
+                    );
+                    content_ui.spacing_mut().item_spacing.x = 14.0;
+                    content_ui.label(RichText::new(status_icon).size(26.0).color(status_color));
+                    content_ui.vertical(|ui| {
+                        ui.label(
+                            RichText::new(&step.name)
+                                .size(17.0)
+                                .color(palette.fg_text_primary)
+                                .strong(),
+                        );
+                        ui.label(
+                            RichText::new(format!("ID: {}", step.id))
+                                .color(palette.fg_text_secondary),
+                        );
+                    });
+                    content_ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            ui.label(
+                                RichText::new(status_text)
+                                    .size(15.0)
+                                    .color(status_color)
+                                    .strong(),
+                            );
+                        },
+                    );
+                }
                 if response.clicked() {
                     self.selected_step = Some(step.id.clone());
                 }
             }
         } else {
-            ui.label("시나리오를 먼저 불러오세요.");
+            let info = RichText::new("시나리오를 먼저 불러오세요.")
+                .color(palette.fg_text_secondary)
+                .italics();
+            ui.label(info);
         }
     }
 
     /// Step 상세 정보를 표시한다.
     fn render_step_detail(&self, ui: &mut egui::Ui) {
-        ui.heading("Step 정보");
+        gradient_section_header(ui, &self.theme, "🧩", "Step 정보");
+        ui.add_space(10.0);
+        let palette = *self.theme.palette();
         if let Some(step_id) = &self.selected_step {
             if let Some(scenario) = &self.scenario {
                 if let Some(step) = scenario.steps.iter().find(|s| &s.id == step_id) {
@@ -275,56 +335,127 @@ impl BatchOrchestratorApp {
                         .get(step_id)
                         .cloned()
                         .unwrap_or_else(StepRuntimeState::new);
-                    ui.label(format!("ID: {}", step.id));
-                    ui.label(format!("이름: {}", step.name));
-                    ui.label(format!("병렬 허용: {}", step.allow_parallel));
-                    ui.label(format!("재시도 횟수: {}", step.retry));
-                    ui.label(format!("타임아웃: {}초", step.timeout_sec));
-                    ui.label(format!("의존성: {}", step.depends_on.join(", ")));
-                    ui.colored_label(
-                        self.theme.status_color(&state.status),
-                        format!("상태: {:?}", state.status),
+                    let status_color = self.theme.status_color(&state.status);
+                    let (_, status_text) = status_indicator(&state.status);
+                    ui.label(
+                        RichText::new(step.name.clone())
+                            .size(20.0)
+                            .color(palette.fg_text_primary)
+                            .strong(),
                     );
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(format!("상태 · {}", status_text))
+                                .color(status_color)
+                                .strong(),
+                        );
+                    });
+                    ui.add_space(10.0);
+                    egui::Grid::new("step_detail_grid")
+                        .num_columns(2)
+                        .spacing([12.0, 8.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            ui.label("ID");
+                            ui.label(format!(": {}", step.id));
+                            ui.end_row();
+                            ui.label("병렬 허용");
+                            ui.label(format!(": {}", step.allow_parallel));
+                            ui.end_row();
+                            ui.label("재시도");
+                            ui.label(format!(": {}회", step.retry));
+                            ui.end_row();
+                            ui.label("타임아웃");
+                            ui.label(format!(": {}초", step.timeout_sec));
+                            ui.end_row();
+                            ui.label("의존성");
+                            let deps = if step.depends_on.is_empty() {
+                                "없음".to_string()
+                            } else {
+                                step.depends_on.join(", ")
+                            };
+                            ui.label(format!(": {}", deps));
+                            ui.end_row();
+                        });
                 }
             }
         } else {
-            ui.label("선택된 Step이 없습니다.");
+            ui.label(RichText::new("선택된 Step이 없습니다.").color(palette.fg_text_secondary));
         }
     }
 
     /// 로그 영역을 렌더링한다.
     fn render_log_panel(&self, ui: &mut egui::Ui) {
-        ui.heading("로그");
+        gradient_section_header(ui, &self.theme, "📝", "로그");
+        ui.add_space(8.0);
         egui::ScrollArea::vertical()
             .stick_to_bottom(true)
             .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 6.0;
+                let text_color = self.theme.palette().fg_text_secondary;
                 for line in self.selected_logs() {
-                    ui.monospace(line);
+                    ui.label(RichText::new(line).color(text_color));
                 }
             });
     }
 
     /// 상단 툴바를 그린다.
     fn render_toolbar(&mut self, ui: &mut egui::Ui) {
-        if ui.button("시나리오 열기").clicked() {
-            self.load_scenario_from_dialog();
-        }
-        ui.add_enabled_ui(self.scenario.is_some() && !self.scenario_running, |ui| {
-            if ui.button("실행").clicked() {
-                self.start_scenario();
+        let decorations = *self.theme.decorations();
+        let palette = *self.theme.palette();
+        let rect = ui.max_rect();
+        paint_horizontal_gradient(
+            ui.painter(),
+            rect,
+            egui::Rounding::same(decorations.toolbar_rounding),
+            decorations.toolbar_gradient.start,
+            decorations.toolbar_gradient.end,
+        );
+        ui.vertical(|ui| {
+            ui.label(
+                RichText::new("✨ Rust Batch Orchestrator")
+                    .size(22.0)
+                    .color(palette.fg_text_primary)
+                    .strong(),
+            );
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = decorations.button_gap;
+                if ui
+                    .add(GradientButton::new(&self.theme, "시나리오 열기").icon("📂"))
+                    .clicked()
+                {
+                    self.load_scenario_from_dialog();
+                }
+                ui.add_enabled_ui(self.scenario.is_some() && !self.scenario_running, |ui| {
+                    if ui
+                        .add(GradientButton::new(&self.theme, "실행").icon("▶"))
+                        .clicked()
+                    {
+                        self.start_scenario();
+                    }
+                });
+                ui.add_enabled_ui(self.scenario_running, |ui| {
+                    if ui
+                        .add(GradientButton::new(&self.theme, "정지").icon("⏹"))
+                        .clicked()
+                    {
+                        self.stop_scenario();
+                    }
+                });
+            });
+            ui.add_space(8.0);
+            if let Some(path) = &self.scenario_path {
+                ui.label(
+                    RichText::new(format!("로드됨 · {}", path.display()))
+                        .color(palette.fg_text_secondary),
+                );
+            }
+            if let Some(err) = &self.last_error {
+                ui.label(RichText::new(err).color(palette.accent_error).strong());
             }
         });
-        ui.add_enabled_ui(self.scenario_running, |ui| {
-            if ui.button("정지").clicked() {
-                self.stop_scenario();
-            }
-        });
-        if let Some(path) = &self.scenario_path {
-            ui.label(format!("로드됨: {}", path.display()));
-        }
-        if let Some(err) = &self.last_error {
-            ui.colored_label(self.theme.palette().accent_error, err);
-        }
     }
 }
 
@@ -334,11 +465,12 @@ impl eframe::App for BatchOrchestratorApp {
         self.drain_events();
         self.theme.apply(ctx);
         let palette = *self.theme.palette();
+        let decorations = *self.theme.decorations();
         let toolbar_frame = egui::Frame {
-            fill: palette.bg_toolbar,
+            fill: egui::Color32::TRANSPARENT,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
-            rounding: egui::Rounding::same(0.0),
-            inner_margin: egui::Margin::symmetric(18.0, 12.0),
+            rounding: egui::Rounding::same(decorations.toolbar_rounding),
+            inner_margin: egui::Margin::symmetric(20.0, 18.0),
             ..Default::default()
         };
         egui::TopBottomPanel::top("toolbar")
@@ -349,8 +481,8 @@ impl eframe::App for BatchOrchestratorApp {
         let sidebar_frame = egui::Frame {
             fill: palette.bg_sidebar,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
-            rounding: egui::Rounding::same(0.0),
-            inner_margin: egui::Margin::symmetric(12.0, 12.0),
+            rounding: egui::Rounding::same(decorations.container_rounding),
+            inner_margin: decorations.card_inner_margin,
             ..Default::default()
         };
         egui::SidePanel::left("steps")
@@ -363,8 +495,8 @@ impl eframe::App for BatchOrchestratorApp {
         let central_frame = egui::Frame {
             fill: palette.bg_main,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
-            rounding: egui::Rounding::same(0.0),
-            inner_margin: egui::Margin::symmetric(18.0, 16.0),
+            rounding: egui::Rounding::same(decorations.container_rounding),
+            inner_margin: egui::Margin::symmetric(22.0, 18.0),
             ..Default::default()
         };
         egui::CentralPanel::default()
@@ -374,17 +506,17 @@ impl eframe::App for BatchOrchestratorApp {
                     egui::Frame::none()
                         .fill(palette.bg_panel)
                         .stroke(egui::Stroke::new(1.0, palette.border_soft))
-                        .rounding(egui::Rounding::same(0.0))
-                        .inner_margin(egui::Margin::symmetric(16.0, 12.0))
+                        .rounding(egui::Rounding::same(decorations.card_rounding))
+                        .inner_margin(decorations.card_inner_margin)
                         .show(ui, |ui| {
                             self.render_step_detail(ui);
                         });
-                    ui.add_space(8.0);
+                    ui.add_space(10.0);
                     egui::Frame::none()
                         .fill(palette.bg_log)
                         .stroke(egui::Stroke::new(1.0, palette.border_soft))
-                        .rounding(egui::Rounding::same(0.0))
-                        .inner_margin(egui::Margin::symmetric(16.0, 12.0))
+                        .rounding(egui::Rounding::same(decorations.card_rounding))
+                        .inner_margin(decorations.card_inner_margin)
                         .show(ui, |ui| {
                             self.render_log_panel(ui);
                         });
@@ -393,20 +525,214 @@ impl eframe::App for BatchOrchestratorApp {
         let progress_frame = egui::Frame {
             fill: palette.bg_panel,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
-            rounding: egui::Rounding::same(0.0),
-            inner_margin: egui::Margin::symmetric(18.0, 10.0),
+            rounding: egui::Rounding::same(decorations.card_rounding),
+            inner_margin: egui::Margin::symmetric(20.0, 12.0),
             ..Default::default()
         };
         egui::TopBottomPanel::bottom("progress")
             .frame(progress_frame)
             .show(ctx, |ui| {
                 let ratio = self.progress_ratio();
-                ui.add(
-                    egui::ProgressBar::new(ratio)
-                        .fill(palette.accent_primary)
-                        // .bg_fill(palette.bg_sidebar)
-                        .text(format!("진행률: {:.0}%", ratio * 100.0)),
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new("📈 전체 진행률")
+                            .color(palette.fg_text_primary)
+                            .strong(),
+                    );
+                    ui.add_space(6.0);
+                    ui.add(
+                        egui::ProgressBar::new(ratio)
+                            .fill(palette.accent_primary)
+                            .text(format!("진행률: {:.0}%", ratio * 100.0)),
+                    );
+                });
+            });
+    }
+}
+
+/// StepStatus를 기반으로 직관적인 아이콘과 텍스트를 반환한다.
+fn status_indicator(status: &StepStatus) -> (&'static str, &'static str) {
+    match status {
+        StepStatus::Pending => ("⏳", "대기 중"),
+        StepStatus::Running => ("⚙️", "실행 중"),
+        StepStatus::Success => ("✅", "성공"),
+        StepStatus::Failed(_) => ("❌", "실패"),
+    }
+}
+
+/// 카드 상단에서 사용할 그라데이션 헤더를 그린다.
+fn gradient_section_header(ui: &mut egui::Ui, theme: &Theme, icon: &str, title: &str) {
+    let decorations = theme.decorations();
+    let size = egui::vec2(ui.available_width(), decorations.header_height);
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    paint_horizontal_gradient(
+        ui.painter(),
+        rect,
+        egui::Rounding::same(decorations.header_rounding),
+        decorations.section_header_gradient.start,
+        decorations.section_header_gradient.end,
+    );
+    let content_rect = rect.shrink2(egui::vec2(16.0, 0.0));
+    ui.allocate_ui_at_rect(content_rect, |ui| {
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+            if !icon.is_empty() {
+                ui.label(
+                    RichText::new(icon)
+                        .size(decorations.header_icon_size)
+                        .color(egui::Color32::WHITE),
+                );
+            }
+            ui.add_space(8.0);
+            ui.label(
+                RichText::new(title)
+                    .size(18.0)
+                    .color(egui::Color32::WHITE)
+                    .strong(),
+            );
+        });
+    });
+}
+
+/// 가로 방향으로 분할된 그라데이션을 그린다.
+fn paint_horizontal_gradient(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    rounding: egui::Rounding,
+    start: egui::Color32,
+    end: egui::Color32,
+) {
+    let segments = 32;
+    for i in 0..segments {
+        let t0 = i as f32 / segments as f32;
+        let t1 = (i + 1) as f32 / segments as f32;
+        let x0 = egui::lerp(rect.left()..=rect.right(), t0);
+        let x1 = egui::lerp(rect.left()..=rect.right(), t1);
+        let mut segment_rounding = egui::Rounding::ZERO;
+        if i == 0 {
+            segment_rounding.nw = rounding.nw;
+            segment_rounding.sw = rounding.sw;
+        }
+        if i == segments - 1 {
+            segment_rounding.ne = rounding.ne;
+            segment_rounding.se = rounding.se;
+        }
+        let segment_rect =
+            egui::Rect::from_min_max(egui::pos2(x0, rect.top()), egui::pos2(x1, rect.bottom()));
+        let color = lerp_color(start, end, (t0 + t1) * 0.5);
+        painter.rect_filled(segment_rect, segment_rounding, color);
+    }
+}
+
+/// 두 색상을 sRGB 공간에서 선형 보간한다.
+fn lerp_color(start: egui::Color32, end: egui::Color32, t: f32) -> egui::Color32 {
+    let mix = |a: u8, b: u8| -> u8 {
+        let af = a as f32;
+        let bf = b as f32;
+        (af + (bf - af) * t).clamp(0.0, 255.0).round() as u8
+    };
+    egui::Color32::from_rgba_unmultiplied(
+        mix(start.r(), end.r()),
+        mix(start.g(), end.g()),
+        mix(start.b(), end.b()),
+        mix(start.a(), end.a()),
+    )
+}
+
+/// 그라데이션 배경과 둥근 모서리를 가진 프라이머리 버튼 위젯.
+struct GradientButton<'a> {
+    theme: &'a Theme,
+    label: &'a str,
+    icon: &'a str,
+}
+
+impl<'a> GradientButton<'a> {
+    /// 버튼의 기본 정보를 생성한다.
+    fn new(theme: &'a Theme, label: &'a str) -> Self {
+        Self {
+            theme,
+            label,
+            icon: "",
+        }
+    }
+
+    /// 버튼에 표시할 아이콘(이모지)을 설정한다.
+    fn icon(mut self, icon: &'a str) -> Self {
+        self.icon = icon;
+        self
+    }
+}
+
+impl<'a> Widget for GradientButton<'a> {
+    /// egui 위젯 트레이트를 구현하여 버튼을 화면에 그린다.
+    fn ui(self, ui: &mut egui::Ui) -> egui::Response {
+        let decorations = self.theme.decorations();
+        let palette = self.theme.palette();
+        let enabled = ui.is_enabled();
+        let button_padding = ui.style().spacing.button_padding.x;
+        let galley = ui.painter().layout_no_wrap(
+            self.label.to_string(),
+            egui::TextStyle::Button.resolve(ui.style()),
+            palette.fg_text_primary,
+        );
+        let icon_space = if self.icon.is_empty() { 0.0 } else { 28.0 };
+        let desired_width = galley.size().x
+            + icon_space
+            + button_padding * 2.0
+            + decorations.button_min_width * 0.1;
+        let size = egui::vec2(
+            desired_width.max(decorations.button_min_width),
+            decorations.button_height,
+        );
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+        let mut start = decorations.primary_button_gradient.start;
+        let mut end = decorations.primary_button_gradient.end;
+        if !enabled {
+            start = blend_color(start, palette.border_soft, 0.45);
+            end = blend_color(end, palette.border_soft, 0.45);
+        } else if response.hovered() {
+            start = blend_color(start, palette.bg_panel, 0.15);
+            end = blend_color(end, palette.bg_panel, 0.05);
+        }
+        if response.is_pointer_button_down_on() {
+            start = blend_color(start, palette.fg_text_primary, 0.1);
+            end = blend_color(end, palette.fg_text_primary, 0.1);
+        }
+        paint_horizontal_gradient(
+            ui.painter(),
+            rect,
+            egui::Rounding::same(decorations.button_rounding),
+            start,
+            end,
+        );
+        if enabled {
+            let highlight_rect =
+                egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.center().y));
+            ui.painter().rect_filled(
+                highlight_rect,
+                egui::Rounding::same(decorations.button_rounding),
+                egui::Color32::from_rgba_unmultiplied(255, 255, 255, 25),
+            );
+        }
+        let text_color = if enabled {
+            egui::Color32::WHITE
+        } else {
+            blend_color(palette.fg_text_secondary, palette.bg_panel, 0.2)
+        };
+        let content_rect = rect.shrink2(egui::vec2(button_padding, 0.0));
+        ui.allocate_ui_at_rect(content_rect, |ui| {
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                if !self.icon.is_empty() {
+                    ui.label(RichText::new(self.icon).size(18.0).color(text_color));
+                }
+                ui.label(
+                    RichText::new(self.label)
+                        .size(16.0)
+                        .color(text_color)
+                        .strong(),
                 );
             });
+        });
+        response
     }
 }

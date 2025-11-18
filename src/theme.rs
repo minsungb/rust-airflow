@@ -3,6 +3,86 @@ use eframe::egui::{self, Color32};
 
 include!(concat!(env!("OUT_DIR"), "/custom_font.rs"));
 
+/// 버튼, 섹션 헤더 등에 사용할 그라데이션 정보를 정의한다.
+#[derive(Clone, Copy, Debug)]
+pub struct ThemeGradient {
+    /// 그라데이션 시작 색.
+    pub start: Color32,
+    /// 그라데이션 종료 색.
+    pub end: Color32,
+}
+
+impl ThemeGradient {
+    /// 지정된 시작/종료 색으로 새로운 그라데이션을 생성한다.
+    pub const fn new(start: Color32, end: Color32) -> Self {
+        Self { start, end }
+    }
+}
+
+/// 테마와 관련된 여백, 모서리, 그라데이션 설정을 담는다.
+#[derive(Clone, Copy, Debug)]
+pub struct ThemeDecorations {
+    /// 카드와 패널에 적용할 라운딩 값.
+    pub card_rounding: f32,
+    /// 사이드바 및 대형 컨테이너용 라운딩 값.
+    pub container_rounding: f32,
+    /// 버튼용 라운딩 값.
+    pub button_rounding: f32,
+    /// 툴바 라운딩 값.
+    pub toolbar_rounding: f32,
+    /// 섹션 헤더 라운딩 값.
+    pub header_rounding: f32,
+    /// 버튼 최소 너비.
+    pub button_min_width: f32,
+    /// 버튼 높이.
+    pub button_height: f32,
+    /// 버튼 간격.
+    pub button_gap: f32,
+    /// 섹션 헤더 높이.
+    pub header_height: f32,
+    /// 헤더 아이콘 크기.
+    pub header_icon_size: f32,
+    /// 프라이머리 버튼용 그라데이션.
+    pub primary_button_gradient: ThemeGradient,
+    /// 섹션 헤더용 그라데이션.
+    pub section_header_gradient: ThemeGradient,
+    /// 툴바 배경 그라데이션.
+    pub toolbar_gradient: ThemeGradient,
+    /// 카드 안쪽 여백.
+    pub card_inner_margin: egui::Margin,
+}
+
+impl ThemeDecorations {
+    /// 라이트 테마 기본 장식 값을 반환한다.
+    pub const fn light() -> Self {
+        Self {
+            card_rounding: 18.0,
+            container_rounding: 20.0,
+            button_rounding: 24.0,
+            toolbar_rounding: 16.0,
+            header_rounding: 18.0,
+            button_min_width: 150.0,
+            button_height: 40.0,
+            button_gap: 16.0,
+            header_height: 42.0,
+            header_icon_size: 24.0,
+            primary_button_gradient: ThemeGradient::new(
+                Color32::from_rgb(255, 153, 102),
+                Color32::from_rgb(255, 94, 142),
+            ),
+            section_header_gradient: ThemeGradient::new(
+                Color32::from_rgb(108, 173, 255),
+                Color32::from_rgb(138, 255, 219),
+            ),
+            toolbar_gradient: ThemeGradient::new(
+                Color32::from_rgb(255, 255, 255),
+                Color32::from_rgb(236, 243, 255),
+            ),
+            card_inner_margin: egui::Margin::symmetric(18.0, 14.0),
+        }
+    }
+}
+
 /// 테마 종류를 정의한다. 현재는 라이트 테마만 구현되어 있으며 추후 다크 테마를 추가할 수 있다.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeVariant {
@@ -39,25 +119,28 @@ pub struct ThemePalette {
     pub border_soft: Color32,
     /// 대기 상태 색상.
     pub accent_pending: Color32,
+    /// 인터랙티브 아이콘 하이라이트 색상.
+    pub icon_emphasis: Color32,
 }
 
 impl ThemePalette {
     /// 라이트 테마용 파스텔 팔레트를 반환한다.
     pub const fn light() -> Self {
         Self {
-            bg_main: Color32::from_rgb(245, 242, 238),
-            bg_panel: Color32::from_rgb(255, 255, 252),
-            bg_toolbar: Color32::from_rgb(253, 248, 240),
-            bg_sidebar: Color32::from_rgb(249, 246, 240),
-            bg_log: Color32::from_rgb(252, 249, 245),
-            fg_text_primary: Color32::from_rgb(40, 40, 40),
-            fg_text_secondary: Color32::from_rgb(102, 99, 92),
-            accent_primary: Color32::from_rgb(96, 159, 210),
-            accent_success: Color32::from_rgb(104, 186, 148),
-            accent_warning: Color32::from_rgb(241, 180, 76),
-            accent_error: Color32::from_rgb(229, 107, 111),
-            border_soft: Color32::from_rgb(215, 206, 194),
-            accent_pending: Color32::from_rgb(223, 217, 207),
+            bg_main: Color32::from_rgb(246, 249, 255),
+            bg_panel: Color32::from_rgb(255, 255, 255),
+            bg_toolbar: Color32::from_rgb(241, 247, 255),
+            bg_sidebar: Color32::from_rgb(248, 250, 255),
+            bg_log: Color32::from_rgb(243, 246, 255),
+            fg_text_primary: Color32::from_rgb(36, 42, 64),
+            fg_text_secondary: Color32::from_rgb(97, 104, 134),
+            accent_primary: Color32::from_rgb(120, 115, 255),
+            accent_success: Color32::from_rgb(32, 201, 151),
+            accent_warning: Color32::from_rgb(255, 173, 73),
+            accent_error: Color32::from_rgb(255, 99, 132),
+            border_soft: Color32::from_rgb(215, 224, 255),
+            accent_pending: Color32::from_rgb(205, 211, 230),
+            icon_emphasis: Color32::from_rgb(56, 149, 255),
         }
     }
 }
@@ -69,6 +152,8 @@ pub struct Theme {
     variant: ThemeVariant,
     /// 테마 팔레트 데이터.
     palette: ThemePalette,
+    /// 세부 장식 정보.
+    decorations: ThemeDecorations,
 }
 
 impl Theme {
@@ -77,6 +162,7 @@ impl Theme {
         Self {
             variant: ThemeVariant::Light,
             palette: ThemePalette::light(),
+            decorations: ThemeDecorations::light(),
         }
     }
 
@@ -85,10 +171,16 @@ impl Theme {
         &self.palette
     }
 
+    /// 현재 테마의 장식 설정을 반환한다.
+    pub fn decorations(&self) -> &ThemeDecorations {
+        &self.decorations
+    }
+
     /// egui Context에 테마 기반 스타일을 적용한다.
     pub fn apply(&self, ctx: &egui::Context) {
         let mut visuals = egui::Visuals::light();
         let palette = self.palette;
+        let decorations = self.decorations;
         visuals.override_text_color = Some(palette.fg_text_primary);
         visuals.window_fill = palette.bg_panel;
         visuals.panel_fill = palette.bg_panel;
@@ -97,25 +189,26 @@ impl Theme {
         visuals.widgets.noninteractive.fg_stroke.color = palette.fg_text_secondary;
         visuals.widgets.inactive.bg_fill = palette.bg_panel;
         visuals.widgets.inactive.fg_stroke.color = palette.fg_text_primary;
-        visuals.widgets.inactive.rounding = egui::Rounding::same(0.0);
+        visuals.widgets.inactive.rounding = egui::Rounding::same(decorations.button_rounding);
         visuals.widgets.hovered.bg_fill =
-            blend_color(palette.accent_primary, palette.bg_panel, 0.2);
+            blend_color(palette.accent_primary, palette.bg_panel, 0.35);
         visuals.widgets.hovered.fg_stroke.color = palette.fg_text_primary;
-        visuals.widgets.hovered.rounding = egui::Rounding::same(0.0);
+        visuals.widgets.hovered.rounding = egui::Rounding::same(decorations.button_rounding);
         visuals.widgets.active.bg_fill = palette.accent_primary;
         visuals.widgets.active.fg_stroke.color = palette.fg_text_primary;
-        visuals.widgets.active.rounding = egui::Rounding::same(0.0);
+        visuals.widgets.active.rounding = egui::Rounding::same(decorations.button_rounding);
         visuals.selection.bg_fill = palette.accent_primary;
         visuals.selection.stroke.color = palette.border_soft;
-        visuals.window_rounding = egui::Rounding::same(0.0);
+        visuals.window_rounding = egui::Rounding::same(decorations.container_rounding);
         visuals.button_frame = true;
         visuals.faint_bg_color = palette.bg_main;
         ctx.set_visuals(visuals);
 
         let mut style = (*ctx.style()).clone();
-        style.spacing.item_spacing = egui::vec2(12.0, 10.0);
-        style.spacing.button_padding = egui::vec2(14.0, 10.0);
-        style.spacing.window_margin = egui::Margin::symmetric(18.0, 16.0);
+        style.spacing.item_spacing = egui::vec2(14.0, 12.0);
+        style.spacing.button_padding = egui::vec2(18.0, 12.0);
+        style.spacing.window_margin = egui::Margin::symmetric(20.0, 16.0);
+        style.animation_time = 0.28;
         style.visuals = ctx.style().visuals.clone();
         ctx.set_style(style);
         install_custom_font(ctx);
@@ -145,7 +238,7 @@ impl Default for Theme {
 }
 
 /// 지정한 두 색상을 비율에 맞춰 혼합한다.
-fn blend_color(foreground: Color32, background: Color32, ratio: f32) -> Color32 {
+pub fn blend_color(foreground: Color32, background: Color32, ratio: f32) -> Color32 {
     let mix = |fg: u8, bg: u8| -> u8 {
         let fg_f = fg as f32;
         let bg_f = bg as f32;
