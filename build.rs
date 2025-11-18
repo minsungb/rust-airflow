@@ -18,14 +18,14 @@ fn embed_icon() {
         return;
     }
     let mut res = winres::WindowsResource::new();
-    res.set_icon(icon_path.to_string_lossy().as_ref());
-    res.compile().expect("아이콘 리소스 컴파일 실패");
-}
 
-#[cfg(not(target_os = "windows"))]
-/// 비 Windows 환경에서는 파일 변경 감지만 수행한다.
-fn embed_icon() {
-    println!("cargo:rerun-if-changed=icons/icon.ico");
+    // 경로를 &str로 변환
+    let icon_path_str = icon_path.to_str().unwrap_or_else(|| {
+        panic!("아이콘 경로를 올바르게 변환할 수 없습니다.");
+    });
+
+    res.set_icon(icon_path_str);
+    res.compile().expect("아이콘 리소스 컴파일 실패");
 }
 
 /// 사용 가능한 한글 폰트를 탐색하여 egui에서 include_bytes! 할 수 있는 스텁을 만든다.

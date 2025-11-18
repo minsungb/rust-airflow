@@ -97,17 +97,17 @@ impl Theme {
         visuals.widgets.noninteractive.fg_stroke.color = palette.fg_text_secondary;
         visuals.widgets.inactive.bg_fill = palette.bg_panel;
         visuals.widgets.inactive.fg_stroke.color = palette.fg_text_primary;
-        visuals.widgets.inactive.rounding = egui::Rounding::same(10.0);
+        visuals.widgets.inactive.rounding = egui::Rounding::same(0.0);
         visuals.widgets.hovered.bg_fill =
             blend_color(palette.accent_primary, palette.bg_panel, 0.2);
         visuals.widgets.hovered.fg_stroke.color = palette.fg_text_primary;
-        visuals.widgets.hovered.rounding = egui::Rounding::same(10.0);
+        visuals.widgets.hovered.rounding = egui::Rounding::same(0.0);
         visuals.widgets.active.bg_fill = palette.accent_primary;
         visuals.widgets.active.fg_stroke.color = palette.fg_text_primary;
-        visuals.widgets.active.rounding = egui::Rounding::same(10.0);
+        visuals.widgets.active.rounding = egui::Rounding::same(0.0);
         visuals.selection.bg_fill = palette.accent_primary;
         visuals.selection.stroke.color = palette.border_soft;
-        visuals.window_rounding = egui::Rounding::same(14.0);
+        visuals.window_rounding = egui::Rounding::same(0.0);
         visuals.button_frame = true;
         visuals.faint_bg_color = palette.bg_main;
         ctx.set_visuals(visuals);

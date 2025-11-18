@@ -246,13 +246,15 @@ impl BatchOrchestratorApp {
                     self.selected_step.as_deref() == Some(step.id.as_str()),
                     label,
                 );
-                let response = ui.add(selectable);
+                let response = ui
+                    .add(selectable)
+                    .on_hover_text(format!("상태: {:?}", state.status));
                 let rect = response.rect;
                 let painter = ui.painter();
                 let indicator =
                     egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 4.0, rect.max.y));
                 painter.rect_filled(indicator, 2.0, color);
-                response.on_hover_text(format!("상태: {:?}", state.status));
+
                 if response.clicked() {
                     self.selected_step = Some(step.id.clone());
                 }
@@ -335,7 +337,7 @@ impl eframe::App for BatchOrchestratorApp {
         let toolbar_frame = egui::Frame {
             fill: palette.bg_toolbar,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
-            rounding: egui::Rounding::same(14.0),
+            rounding: egui::Rounding::same(0.0),
             inner_margin: egui::Margin::symmetric(18.0, 12.0),
             ..Default::default()
         };
@@ -347,7 +349,7 @@ impl eframe::App for BatchOrchestratorApp {
         let sidebar_frame = egui::Frame {
             fill: palette.bg_sidebar,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
-            rounding: egui::Rounding::same(12.0),
+            rounding: egui::Rounding::same(0.0),
             inner_margin: egui::Margin::symmetric(12.0, 12.0),
             ..Default::default()
         };
@@ -361,7 +363,7 @@ impl eframe::App for BatchOrchestratorApp {
         let central_frame = egui::Frame {
             fill: palette.bg_main,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
-            rounding: egui::Rounding::same(18.0),
+            rounding: egui::Rounding::same(0.0),
             inner_margin: egui::Margin::symmetric(18.0, 16.0),
             ..Default::default()
         };
@@ -372,7 +374,7 @@ impl eframe::App for BatchOrchestratorApp {
                     egui::Frame::none()
                         .fill(palette.bg_panel)
                         .stroke(egui::Stroke::new(1.0, palette.border_soft))
-                        .rounding(egui::Rounding::same(12.0))
+                        .rounding(egui::Rounding::same(0.0))
                         .inner_margin(egui::Margin::symmetric(16.0, 12.0))
                         .show(ui, |ui| {
                             self.render_step_detail(ui);
@@ -381,7 +383,7 @@ impl eframe::App for BatchOrchestratorApp {
                     egui::Frame::none()
                         .fill(palette.bg_log)
                         .stroke(egui::Stroke::new(1.0, palette.border_soft))
-                        .rounding(egui::Rounding::same(12.0))
+                        .rounding(egui::Rounding::same(0.0))
                         .inner_margin(egui::Margin::symmetric(16.0, 12.0))
                         .show(ui, |ui| {
                             self.render_log_panel(ui);
@@ -391,7 +393,7 @@ impl eframe::App for BatchOrchestratorApp {
         let progress_frame = egui::Frame {
             fill: palette.bg_panel,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
-            rounding: egui::Rounding::same(14.0),
+            rounding: egui::Rounding::same(0.0),
             inner_margin: egui::Margin::symmetric(18.0, 10.0),
             ..Default::default()
         };
@@ -402,7 +404,7 @@ impl eframe::App for BatchOrchestratorApp {
                 ui.add(
                     egui::ProgressBar::new(ratio)
                         .fill(palette.accent_primary)
-                        .bg_fill(palette.bg_sidebar)
+                        // .bg_fill(palette.bg_sidebar)
                         .text(format!("진행률: {:.0}%", ratio * 100.0)),
                 );
             });
