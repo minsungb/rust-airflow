@@ -1,9 +1,8 @@
 use crate::engine::EngineEvent;
-use crate::scenario::StepKind;
+use crate::scenario::SqlLoaderParConfig;
 use anyhow::Context;
 use async_trait::async_trait;
 use futures::StreamExt;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
@@ -41,21 +40,36 @@ pub type SharedExecutor = Arc<dyn DbExecutor>;
 
 /// sqlldr 프로세스를 실행하고 로그를 EngineEvent로 전달한다.
 pub async fn run_sqlldr(
-    par_path: &Path,
-    conn: &str,
+    config: &SqlLoaderParConfig,
     timeout_duration: Duration,
     sender: &UnboundedSender<EngineEvent>,
     step_id: &str,
 ) -> anyhow::Result<()> {
     let mut command = Command::new("sqlldr");
-    command
-        .arg(conn)
-        .arg(format!("control={}", par_path.display()));
+    let conn = config
+        .conn
+        .clone()
+        .or_else(|| std::env::var("DB_CONN").ok())
+        .ok_or_else(|| anyhow::anyhow!("sqlldr 접속 문자열을 찾을 수 없습니다."))?;
+    command.arg(conn);
+    command.arg(format!("control={}", config.control_file.display()));
+    if let Some(data) = &config.data_file {
+        command.arg(format!("data={}", data.display()));
+    }
+    if let Some(log) = &config.log_file {
+        command.arg(format!("log={}", log.display()));
+    }
+    if let Some(bad) = &config.bad_file {
+        command.arg(format!("bad={}", bad.display()));
+    }
+    if let Some(discard) = &config.discard_file {
+        command.arg(format!("discard={}", discard.display()));
+    }
     command.stdout(std::process::Stdio::piped());
     command.stderr(std::process::Stdio::piped());
     let mut child = command
         .spawn()
-        .with_context(|| format!("sqlldr 실행 실패: {}", par_path.display()))?;
+        .with_context(|| format!("sqlldr 실행 실패: {}", config.control_file.display()))?;
     if let Some(stdout) = child.stdout.take() {
         let tx = sender.clone();
         let id = step_id.to_string();

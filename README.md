@@ -34,7 +34,33 @@ steps:
     timeout_sec: 600
 ```
 
-`kind`는 `sql`, `sql_file`, `sqlldr_par`, `shell` 중 하나를 선택할 수 있으며, 필요한 필드를 Map 형태로 제공하면 됩니다.
+`kind`는 `sql`, `sql_file`, `sqlldr_par`, `shell` 중 하나를 선택하며, Kind별 설정은 동일 레벨에 추가 필드로 작성합니다.
+
+```yaml
+  - id: load_customer
+    name: 고객 마스터 적재
+    kind: sqlldr_par
+    sqlldr:
+      conn: "APP_USER/secret@ORCLPDB1"
+      control_file: "/app/batch/ctl/customer.ctl"
+      data_file: "/app/batch/data/customer.dat"
+      log_file: "/app/batch/logs/customer.log"
+```
+
+Shell Step은 다음과 같이 실행 스크립트, 계정, 환경 변수를 지정할 수 있습니다.
+
+```yaml
+  - id: notify
+    name: 알림 전송
+    kind: shell
+    shell:
+      script: "./scripts/notify.sh"
+      shell_program: "/bin/bash"
+      env:
+        SERVICE: prod
+      run_as: batchuser
+      error_policy: ignore
+```
 
 ## 프로젝트 구조
 
