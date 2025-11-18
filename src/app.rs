@@ -420,50 +420,43 @@ impl BatchOrchestratorApp {
             );
             ui.add_space(10.0);
             if let Some(path) = &self.scenario_path {
-                ui.label(
-                    RichText::new(format!("로드됨 · {}", path.display()))
-                        .color(palette.fg_text_secondary),
-                );
-            } else {
-                ui.label(
-                    RichText::new("시나리오 파일을 선택해 시작하세요.")
-                        .color(palette.fg_text_secondary),
-                );
-            }
-            if let Some(err) = &self.last_error {
-                ui.add_space(4.0);
-                ui.label(RichText::new(err).color(palette.accent_error).strong());
-            }
-            ui.add_space(16.0);
-            let button_count = 3.0;
-            let button_stack_height = decorations.button_height * button_count
-                + decorations.button_gap * (button_count - 1.0);
-            let spacer = ui.available_height() - button_stack_height;
-            if spacer > 0.0 {
-                ui.add_space(spacer);
-            }
-            ui.spacing_mut().item_spacing.y = decorations.button_gap;
-            if ui
-                .add(PrimaryButton::new(&self.theme, "시나리오 열기").icon("📂"))
-                .clicked()
-            {
-                self.load_scenario_from_dialog();
-            }
-            ui.add_enabled_ui(self.scenario.is_some() && !self.scenario_running, |ui| {
+                        ui.label(
+                            RichText::new(format!("로드됨 · {}", path.display()))
+                                .color(palette.fg_text_secondary),
+                        );
+                    } else {
+                        ui.label(
+                            RichText::new("시나리오 파일을 선택해 시작하세요.")
+                                .color(palette.fg_text_secondary),
+                        );
+                    }
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = decorations.button_gap;
+                if let Some(err) = &self.last_error {
+                    ui.label(RichText::new(err).color(palette.accent_error).strong());
+                }
                 if ui
-                    .add(PrimaryButton::new(&self.theme, "실행").icon("▶"))
+                    .add(PrimaryButton::new(&self.theme, "시나리오 열기").icon("📂"))
                     .clicked()
                 {
-                    self.start_scenario();
+                    self.load_scenario_from_dialog();
                 }
-            });
-            ui.add_enabled_ui(self.scenario_running, |ui| {
-                if ui
-                    .add(PrimaryButton::new(&self.theme, "정지").icon("⏹"))
-                    .clicked()
-                {
-                    self.stop_scenario();
-                }
+                ui.add_enabled_ui(self.scenario.is_some() && !self.scenario_running, |ui| {
+                    if ui
+                        .add(PrimaryButton::new(&self.theme, "실행").icon("▶"))
+                        .clicked()
+                    {
+                        self.start_scenario();
+                    }
+                });
+                ui.add_enabled_ui(self.scenario_running, |ui| {
+                    if ui
+                        .add(PrimaryButton::new(&self.theme, "정지").icon("⏹"))
+                        .clicked()
+                    {
+                        self.stop_scenario();
+                    }
+                });
             });
         });
     }
@@ -642,21 +635,28 @@ impl<'a> Widget for PrimaryButton<'a> {
         let palette = self.theme.palette();
         let enabled = ui.is_enabled();
         let button_padding = ui.style().spacing.button_padding.x;
+
+        // 텍스트 레이아웃
         let galley = ui.painter().layout_no_wrap(
             self.label.to_string(),
             egui::TextStyle::Button.resolve(ui.style()),
             palette.fg_text_primary,
         );
+
+        // 아이콘 공간 계산
         let icon_space = if self.icon.is_empty() { 0.0 } else { 28.0 };
-        let desired_width = galley.size().x
-            + icon_space
-            + button_padding * 2.0
-            + decorations.button_min_width * 0.1;
+
+        // 버튼의 원하는 너비 계산
+        let desired_width = galley.size().x + icon_space + button_padding * 2.0 + decorations.button_min_width * 0.1;
         let size = egui::vec2(
-            desired_width.max(decorations.button_min_width),
-            decorations.button_height,
+            desired_width.max(decorations.button_min_width), // 최소 너비
+            decorations.button_height, // 버튼 높이
         );
+
+        // 버튼 배치 및 클릭 감지 (Button 위젯을 사용하여 클릭 가능 영역 확장)
         let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+
+        // 버튼 상태에 따라 색상 변경
         let mut fill = palette.accent_primary;
         if !enabled {
             fill = blend_color(fill, palette.border_soft, 0.5);
@@ -665,28 +665,42 @@ impl<'a> Widget for PrimaryButton<'a> {
         } else if response.hovered() {
             fill = blend_color(fill, palette.bg_panel, 0.2);
         }
+
+        // 버튼 그리기 (배경색)
         ui.painter().rect_filled(
             rect,
             egui::Rounding::same(decorations.button_rounding),
             fill,
         );
+
+        // 버튼 테두리 그리기
         ui.painter().rect_stroke(
             rect,
             egui::Rounding::same(decorations.button_rounding),
             egui::Stroke::new(1.0, blend_color(fill, palette.border_soft, 0.6)),
         );
+
+        // 텍스트 색상 (활성화 여부에 따라 다르게 설정)
         let text_color = if enabled {
             egui::Color32::WHITE
         } else {
             blend_color(palette.fg_text_secondary, palette.bg_panel, 0.4)
         };
+
+        // 버튼 내용(아이콘과 텍스트) 그리기
         let content_rect = rect.shrink2(egui::vec2(button_padding, 0.0));
+
+        // 버튼 클릭 가능 영역에 텍스트 및 아이콘 추가
         ui.allocate_ui_at_rect(content_rect, |ui| {
             ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
+                ui.spacing_mut().item_spacing.x = 8.0;  // 아이콘과 텍스트 간 간격 조정
+
+                // 아이콘 표시 (빈 경우 제외)
                 if !self.icon.is_empty() {
                     ui.label(RichText::new(self.icon).size(18.0).color(text_color));
                 }
+
+                // 텍스트 표시
                 ui.label(
                     RichText::new(self.label)
                         .size(16.0)
@@ -695,6 +709,9 @@ impl<'a> Widget for PrimaryButton<'a> {
                 );
             });
         });
+
         response
     }
 }
+
+
