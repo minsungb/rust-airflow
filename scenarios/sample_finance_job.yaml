@@ -11,7 +11,7 @@ steps:
 
   - id: "02_load_a"
     name: "A 계정 적재(sqlldr)"
-    kind: sqlldr_par
+    kind: sql_loader_par
     sqlldr:
       control_file: "par/1102_a.par"
     depends_on: ["01_extract"]
@@ -21,7 +21,7 @@ steps:
 
   - id: "03_load_b"
     name: "B 계정 적재(sqlldr)"
-    kind: sqlldr_par
+    kind: sql_loader_par
     sqlldr:
       control_file: "par/1102_b.par"
     depends_on: ["01_extract"]
