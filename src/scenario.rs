@@ -4,9 +4,65 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
+/// sqlldr Step 구성을 표현한다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SqlLoaderParConfig {
+    /// control 파일 경로.
+    pub control_file: PathBuf,
+    /// 데이터 파일 경로.
+    pub data_file: Option<PathBuf>,
+    /// 로그 파일 경로.
+    pub log_file: Option<PathBuf>,
+    /// bad 파일 경로.
+    pub bad_file: Option<PathBuf>,
+    /// discard 파일 경로.
+    pub discard_file: Option<PathBuf>,
+    /// SQL*Loader 접속 문자열.
+    pub conn: Option<String>,
+}
+
+/// Shell Step 실행 설정이다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShellConfig {
+    /// 실제 실행할 스크립트/명령 문자열.
+    pub script: String,
+    /// 사용할 셸 프로그램 경로.
+    pub shell_program: Option<String>,
+    /// 셸 프로그램 추가 인자 목록.
+    #[serde(default)]
+    pub shell_args: Vec<String>,
+    /// 스크립트 실행 시 적용할 환경 변수.
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    /// 실행 전 변경할 작업 디렉터리.
+    pub working_dir: Option<PathBuf>,
+    /// 명령을 실행할 사용자 계정.
+    pub run_as: Option<String>,
+    /// 비정상 종료 시 처리 정책.
+    #[serde(default)]
+    pub error_policy: ShellErrorPolicy,
+}
+
+/// Shell Step 실패 처리 정책이다.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ShellErrorPolicy {
+    /// 비정상 종료 시 Step 전체를 실패로 처리한다.
+    Fail,
+    /// 비정상 종료여도 Step을 성공으로 간주한다.
+    Ignore,
+}
+
+impl Default for ShellErrorPolicy {
+    /// 기본 정책은 실패 시 Step을 중단한다.
+    fn default() -> Self {
+        ShellErrorPolicy::Fail
+    }
+}
+
 /// StepKind는 배치 엔진이 수행할 개별 작업 유형을 표현한다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum StepKind {
     /// SQL 문자열을 직접 실행한다.
     Sql { sql: String },
@@ -18,12 +74,16 @@ pub enum StepKind {
     },
     /// sqlldr par 파일을 실행한다.
     SqlLoaderPar {
-        /// par 파일 경로.
-        #[serde(rename = "sqlldr_par")]
-        path: PathBuf,
+        /// sqlldr 실행 구성.
+        #[serde(rename = "sqlldr")]
+        config: SqlLoaderParConfig,
     },
     /// 쉘 명령을 실행한다.
-    Shell { shell: String },
+    Shell {
+        /// 쉘 실행 구성.
+        #[serde(rename = "shell")]
+        config: ShellConfig,
+    },
 }
 
 /// Step은 Scenario 내 최소 실행 단위를 표현한다.
@@ -34,6 +94,7 @@ pub struct Step {
     /// 사용자 친화적인 Step 이름.
     pub name: String,
     /// Step에서 실행할 Kind 정보.
+    #[serde(flatten)]
     pub kind: StepKind,
     /// 선행 Step ID 목록.
     pub depends_on: Vec<String>,
