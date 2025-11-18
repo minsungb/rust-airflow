@@ -198,33 +198,45 @@ impl BatchOrchestratorApp {
                         .color(palette.fg_text_secondary),
                 );
             }
+            if let Some(err) = &self.last_error {
+                ui.label(
+                    RichText::new(err)
+                        .color(palette.accent_error)
+                        .strong(),
+                );
+                ui.add_space(10.0);
+            }
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = decorations.button_gap;
-                if let Some(err) = &self.last_error {
-                    ui.label(RichText::new(err).color(palette.accent_error).strong());
-                }
+
                 if ui
-                    .add(PrimaryButton::new(&self.theme, "시나리오 열기").icon("📂"))
+                    .add(PrimaryButton::new(&self.theme, "열기").icon("📂"))
                     .clicked()
                 {
                     self.load_scenario_from_dialog();
                 }
-                ui.add_enabled_ui(self.scenario.is_some() && !self.scenario_running, |ui| {
-                    if ui
-                        .add(PrimaryButton::new(&self.theme, "실행").icon("▶"))
-                        .clicked()
-                    {
-                        self.start_scenario();
-                    }
-                });
-                ui.add_enabled_ui(self.scenario_running, |ui| {
-                    if ui
-                        .add(PrimaryButton::new(&self.theme, "정지").icon("⏹"))
-                        .clicked()
-                    {
-                        self.stop_scenario();
-                    }
-                });
+
+                let can_run = self.scenario.is_some() && !self.scenario_running;
+                if ui
+                    .add_enabled(
+                        can_run,
+                        PrimaryButton::new(&self.theme, "실행").icon("▶"),
+                    )
+                    .clicked()
+                {
+                    self.start_scenario();
+                }
+
+                let can_stop = self.scenario_running;
+                if ui
+                    .add_enabled(
+                        can_stop,
+                        PrimaryButton::new(&self.theme, "정지").icon("⏹"),
+                    )
+                    .clicked()
+                {
+                    self.stop_scenario();
+                }
             });
         });
     }

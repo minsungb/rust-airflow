@@ -5,11 +5,10 @@ use eframe::egui::{self, RichText, Widget};
 pub(super) struct PrimaryButton<'a> {
     theme: &'a Theme,
     label: &'a str,
-    icon: &'a str,
+    icon:  &'a str,
 }
 
 impl<'a> PrimaryButton<'a> {
-    /// 버튼의 기본 정보를 생성한다.
     pub(super) fn new(theme: &'a Theme, label: &'a str) -> Self {
         Self {
             theme,
@@ -18,7 +17,6 @@ impl<'a> PrimaryButton<'a> {
         }
     }
 
-    /// 버튼에 표시할 아이콘(이모지)을 설정한다.
     pub(super) fn icon(mut self, icon: &'a str) -> Self {
         self.icon = icon;
         self
@@ -26,71 +24,61 @@ impl<'a> PrimaryButton<'a> {
 }
 
 impl<'a> Widget for PrimaryButton<'a> {
-    /// egui 위젯 트레이트를 구현하여 버튼을 화면에 그린다.
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let decorations = self.theme.decorations();
-        let palette = self.theme.palette();
+        let palette     = self.theme.palette();
+
         let enabled = ui.is_enabled();
-        let button_padding = ui.style().spacing.button_padding.x;
-        let galley = ui.painter().layout_no_wrap(
-            self.label.to_string(),
-            egui::TextStyle::Button.resolve(ui.style()),
-            palette.fg_text_primary,
-        );
-        let icon_space = if self.icon.is_empty() { 0.0 } else { 28.0 };
-        let desired_width = galley.size().x
-            + icon_space
-            + button_padding * 2.0
-            + decorations.button_min_width * 0.1;
-        let size = egui::vec2(
-            desired_width.max(decorations.button_min_width),
-            decorations.button_height,
-        );
-        let (rect, mut response) = ui.allocate_exact_size(size, egui::Sense::click());
-        let mut fill = palette.accent_primary;
-        if !enabled {
-            fill = blend_color(fill, palette.border_soft, 0.5);
-        } else if response.is_pointer_button_down_on() {
-            fill = blend_color(fill, palette.fg_text_primary, 0.2);
-        } else if response.hovered() {
-            fill = blend_color(fill, palette.bg_panel, 0.2);
-        }
-        ui.painter().rect_filled(
-            rect,
-            egui::Rounding::same(decorations.button_rounding),
-            fill,
-        );
-        ui.painter().rect_stroke(
-            rect,
-            egui::Rounding::same(decorations.button_rounding),
-            egui::Stroke::new(1.0, blend_color(fill, palette.border_soft, 0.6)),
-        );
-        let text_color = if enabled {
-            egui::Color32::WHITE
+
+        // 아이콘 + 텍스트 결합
+        let text = if self.icon.is_empty() {
+            self.label.to_string()
         } else {
-            blend_color(palette.fg_text_secondary, palette.bg_panel, 0.4)
+            format!("{}  {}", self.icon, self.label)
         };
-        let content_rect = rect.shrink2(egui::vec2(button_padding, 0.0));
-        let label_response = ui.interact(
-            content_rect,
-            ui.id().with((self.label, "primary_button")),
-            egui::Sense::click(),
-        );
-        response |= label_response;
-        ui.allocate_ui_at_rect(content_rect, |ui| {
-            ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
-                if !self.icon.is_empty() {
-                    ui.label(RichText::new(self.icon).size(18.0).color(text_color));
-                }
-                ui.label(
-                    RichText::new(self.label)
-                        .size(16.0)
-                        .color(text_color)
-                        .strong(),
-                );
+
+        // 여기서 폰트 크기/굵기를 마음대로 설정
+        let font_size = 16.0; // 원하는 크기
+        let rich = egui::RichText::new(text)
+            .size(font_size)     // 글자 크기
+            .strong()            // 굵게
+            .color(if enabled {
+                egui::Color32::WHITE
+            } else {
+                blend_color(palette.fg_text_secondary, palette.bg_panel, 0.4)
             });
+
+        // 버튼 높이를 자동으로 글자 높이에 맞추기
+        let text_height = ui.ctx().fonts(|f| {
+            f.row_height(&egui::FontId::new(font_size, egui::FontFamily::Proportional))
         });
+        let button_height = decorations.button_height.max(text_height + 6.0);
+
+        let mut button = egui::Button::new(rich)
+            .min_size(egui::vec2(
+                decorations.button_min_width,
+                button_height,       // 글자 크기에 따라 자동 증가
+            ))
+            .rounding(egui::Rounding::same(decorations.button_rounding));
+
+        // 배경색
+        let base_fill = if enabled {
+            palette.accent_primary
+        } else {
+            blend_color(palette.accent_primary, palette.border_soft, 0.5)
+        };
+        button = button.fill(base_fill);
+
+        // 실제 버튼 추가
+        let response = ui.add(button);
+
+        // Hover 시 마우스 커서 모양 변경
+        if enabled && response.hovered() {
+            ui.output_mut(|o| {
+                o.cursor_icon = egui::CursorIcon::PointingHand;
+            });
+        }
+
         response
     }
 }
