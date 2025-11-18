@@ -1,4 +1,6 @@
+use super::context::{ExecutionContext, SharedExecutionContext};
 use super::events::EngineEvent;
+use super::resources::prepare_engine_handles;
 use super::state::{ScenarioRuntime, StepStatus};
 use super::steps::{StepRunResult, run_single_step};
 use crate::executor::SharedExecutor;
@@ -6,6 +8,7 @@ use crate::scenario::{Scenario, Step};
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use std::collections::HashSet;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
@@ -18,6 +21,8 @@ pub async fn run_scenario(
     sender: UnboundedSender<EngineEvent>,
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
+    let ctx: SharedExecutionContext = Arc::new(tokio::sync::RwLock::new(ExecutionContext::new()));
+    let handles = Arc::new(prepare_engine_handles(&scenario, executor, ctx.clone()).await?);
     let mut runtime = ScenarioRuntime::new(scenario.clone());
     let mut started: HashSet<String> = HashSet::new();
     let mut succeeded: HashSet<String> = HashSet::new();
@@ -43,8 +48,14 @@ pub async fn run_scenario(
             let step_id = step.id.clone();
             started.insert(step_id.clone());
             mark_step_started(&mut runtime, &step_id, &sender);
-            let result =
-                run_single_step(step, executor.clone(), sender.clone(), cancel.clone()).await;
+            let result = run_single_step(
+                step,
+                handles.clone(),
+                ctx.clone(),
+                sender.clone(),
+                cancel.clone(),
+            )
+            .await;
             apply_result(
                 result,
                 &mut runtime,
@@ -58,11 +69,12 @@ pub async fn run_scenario(
             let step_id = step.id.clone();
             started.insert(step_id.clone());
             mark_step_started(&mut runtime, &step_id, &sender);
-            let exec = executor.clone();
+            let exec_handles = handles.clone();
+            let exec_ctx = ctx.clone();
             let tx = sender.clone();
             let token = cancel.clone();
             running_tasks.push(tokio::spawn(async move {
-                let outcome = run_single_step(step, exec, tx, token).await;
+                let outcome = run_single_step(step, exec_handles, exec_ctx, tx, token).await;
                 (step_id, outcome)
             }));
         }

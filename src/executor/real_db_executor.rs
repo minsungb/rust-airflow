@@ -11,9 +11,9 @@ pub struct RealDbExecutor {
     /// 연결 문자열을 보관한다.
     dsn: String,
     /// 접속 사용자명을 보관한다.
-    user: String,
+    user: Option<String>,
     /// 접속 비밀번호를 보관한다.
-    password: String,
+    password: Option<String>,
     /// deadpool 기반 연결 풀이다.
     pool: Pool,
 }
@@ -30,17 +30,14 @@ impl RealDbExecutor {
     /// 초기화된 `RealDbExecutor` 인스턴스를 포함한 [`Result`]를 반환한다.
     pub async fn new(
         dsn: impl Into<String>,
-        user: impl Into<String>,
-        password: impl Into<String>,
+        user: Option<String>,
+        password: Option<String>,
     ) -> Result<Self> {
         let dsn = dsn.into();
-        let user = user.into();
-        let password = password.into();
-
         let mut config = PoolConfig::new();
         config.url = Some(dsn.clone());
-        config.user = Some(user.clone());
-        config.password = Some(password.clone());
+        config.user = user.clone();
+        config.password = password.clone();
         config.manager = Some(ManagerConfig {
             recycling_method: RecyclingMethod::Fast,
         });
@@ -91,9 +88,9 @@ impl DbExecutor for RealDbExecutor {
 /// # 반환값
 /// 생성된 실행기를 담은 [`SharedExecutor`]를 반환한다.
 pub async fn new_real_db_executor(
-    dsn: impl Into<String>,
-    user: impl Into<String>,
-    password: impl Into<String>,
+    dsn: String,
+    user: Option<String>,
+    password: Option<String>,
 ) -> Result<SharedExecutor> {
     let executor = RealDbExecutor::new(dsn, user, password).await?;
     Ok(Arc::new(executor) as SharedExecutor)
