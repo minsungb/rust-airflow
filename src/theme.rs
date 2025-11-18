@@ -56,11 +56,11 @@ impl ThemeDecorations {
     /// 라이트 테마 기본 장식 값을 반환한다.
     pub fn light() -> Self {
         Self {
-            card_rounding: 18.0,
-            container_rounding: 20.0,
-            button_rounding: 24.0,
-            toolbar_rounding: 16.0,
-            header_rounding: 18.0,
+            card_rounding: 0.0,
+            container_rounding: 0.0,
+            button_rounding: 0.0,
+            toolbar_rounding: 0.0,
+            header_rounding: 0.0,
             button_min_width: 150.0,
             button_height: 40.0,
             button_gap: 16.0,
@@ -78,7 +78,7 @@ impl ThemeDecorations {
                 Color32::from_rgb(255, 255, 255),
                 Color32::from_rgb(236, 243, 255),
             ),
-            card_inner_margin: egui::Margin::symmetric(18.0, 14.0),
+            card_inner_margin: egui::Margin::symmetric(0.0, 0.0),
         }
     }
 }

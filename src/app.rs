@@ -467,7 +467,7 @@ impl eframe::App for BatchOrchestratorApp {
         let palette = *self.theme.palette();
         let decorations = *self.theme.decorations();
         let toolbar_frame = egui::Frame {
-            fill: egui::Color32::TRANSPARENT,
+            fill: egui::Color32::from_rgb(241, 247, 255),
             stroke: egui::Stroke::new(1.0, palette.border_soft),
             rounding: egui::Rounding::same(decorations.toolbar_rounding),
             inner_margin: egui::Margin::symmetric(20.0, 18.0),
