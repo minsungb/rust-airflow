@@ -20,6 +20,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::sleep;
 use tokio_util::codec::{FramedRead, LinesCodec};
 use tokio_util::sync::CancellationToken;
+use futures::future::BoxFuture;
 
 /// Step 실행의 결과를 표현한다.
 #[derive(Debug)]
@@ -358,60 +359,75 @@ async fn execute_loop_step(
 }
 
 /// Loop 내 하위 Step을 순차 실행한다.
-async fn run_embedded_step(
-    step: &Step,
-    log_step_id: &str,
+fn run_embedded_step<'a>(
+    step: &'a Step,
+    log_step_id: &'a str,
     handles: Arc<EngineHandles>,
     ctx: SharedExecutionContext,
     sender: UnboundedSender<EngineEvent>,
     cancel: CancellationToken,
-) -> anyhow::Result<()> {
-    if let Some(confirm) = &step.confirm {
-        if !evaluate_confirm(step, log_step_id, confirm, ConfirmPhase::Before, &sender) {
-            anyhow::bail!("Loop 하위 Step '{}' 사전 컨펌 거부", step.name);
+) -> BoxFuture<'a, anyhow::Result<()>> {
+    Box::pin(async move {
+        // === 기존 본문 그대로 ===
+        if let Some(confirm) = &step.confirm {
+            if !evaluate_confirm(step, log_step_id, confirm, ConfirmPhase::Before, &sender) {
+                anyhow::bail!("Loop 하위 Step '{}' 사전 컨펌 거부", step.name);
+            }
         }
-    }
-    let timeout_duration = Duration::from_secs(step.timeout_sec.max(1));
-    let mut attempt: u8 = 0;
-    loop {
-        if cancel.is_cancelled() {
-            anyhow::bail!("사용자에 의해 Loop 하위 Step이 중단되었습니다.");
-        }
-        let backoff = Duration::from_secs(2_u64.pow(attempt as u32));
-        let exec_future = execute_step_kind(
-            step,
-            log_step_id,
-            handles.clone(),
-            ctx.clone(),
-            sender.clone(),
-            cancel.clone(),
-        );
-        let result = tokio::time::timeout(timeout_duration, exec_future).await;
-        match result {
-            Ok(Ok(())) => {
-                if let Some(confirm) = &step.confirm {
-                    if !evaluate_confirm(step, log_step_id, confirm, ConfirmPhase::After, &sender) {
-                        anyhow::bail!("Loop 하위 Step '{}' 사후 컨펌 거부", step.name);
+
+        let timeout_duration = Duration::from_secs(step.timeout_sec.max(1));
+        let mut attempt: u8 = 0;
+
+        loop {
+            if cancel.is_cancelled() {
+                anyhow::bail!("사용자에 의해 Loop 하위 Step이 중단되었습니다.");
+            }
+
+            let backoff = Duration::from_secs(2_u64.pow(attempt as u32));
+
+            let exec_future = execute_step_kind(
+                step,
+                log_step_id,
+                handles.clone(),
+                ctx.clone(),
+                sender.clone(),
+                cancel.clone(),
+            );
+
+            let result = tokio::time::timeout(timeout_duration, exec_future).await;
+
+            match result {
+                Ok(Ok(())) => {
+                    if let Some(confirm) = &step.confirm {
+                        if !evaluate_confirm(
+                            step,
+                            log_step_id,
+                            confirm,
+                            ConfirmPhase::After,
+                            &sender,
+                        ) {
+                            anyhow::bail!("Loop 하위 Step '{}' 사후 컨펌 거부", step.name);
+                        }
                     }
+                    return Ok(());
                 }
-                return Ok(());
-            }
-            Ok(Err(err)) => {
-                attempt += 1;
-                if attempt > step.retry {
-                    return Err(err);
+                Ok(Err(err)) => {
+                    attempt += 1;
+                    if attempt > step.retry {
+                        return Err(err);
+                    }
+                    sleep(backoff).await;
                 }
-                sleep(backoff).await;
-            }
-            Err(_) => {
-                attempt += 1;
-                if attempt > step.retry {
-                    anyhow::bail!("Loop 하위 Step '{}' 시간 초과", step.name);
+                Err(_) => {
+                    attempt += 1;
+                    if attempt > step.retry {
+                        anyhow::bail!("Loop 하위 Step '{}' 시간 초과", step.name);
+                    }
+                    sleep(backoff).await;
                 }
-                sleep(backoff).await;
             }
         }
-    }
+    })
 }
 
 /// 쉘 명령을 실행하고 실시간 로그를 전달한다.
