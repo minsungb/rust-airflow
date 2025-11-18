@@ -6,8 +6,8 @@ mod executor;
 mod scenario;
 mod theme;
 
-use eframe::egui;
 use app::BatchOrchestratorApp;
+use eframe::egui;
 use std::io::Cursor;
 
 /// egui 애플리케이션을 초기화하고 실행하는 진입점입니다.
@@ -29,7 +29,6 @@ fn main() -> eframe::Result<()> {
         Box::new(|cc| Box::new(BatchOrchestratorApp::new(cc))),
     )
 }
-
 
 /// 애플리케이션 아이콘을 ICO 파일에서 읽어 egui가 요구하는 포맷으로 변환합니다.
 fn load_icon_from_ico() -> egui::IconData {
