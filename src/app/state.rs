@@ -1,9 +1,12 @@
-use crate::engine::{EngineEvent, StepRuntimeState, StepStatus, run_scenario};
+use crate::editor::{editor_state_to_scenario, scenario_to_editor_state, ScenarioEditorState};
+use crate::engine::{run_scenario, EngineEvent, StepRuntimeState, StepStatus};
 use crate::executor::{DummyExecutor, SharedExecutor};
-use crate::scenario::{Scenario, load_scenario_from_file};
+use crate::scenario::{load_scenario_from_file, Scenario};
 use crate::theme::Theme;
 use eframe::egui;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::runtime::Runtime;
@@ -12,6 +15,15 @@ use tokio_util::sync::CancellationToken;
 
 /// 메모리에 적재할 수 있는 최대 로그 라인 수를 정의한다.
 pub(crate) const MAX_LOG_LINES: usize = 500;
+
+/// 앱 상단 탭 종류를 정의한다.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppTab {
+    /// 실행 모니터링 탭이다.
+    Run,
+    /// 시나리오 빌더 탭이다.
+    ScenarioBuilder,
+}
 
 /// egui 애플리케이션의 전체 상태를 보관한다.
 pub struct BatchOrchestratorApp {
@@ -39,6 +51,12 @@ pub struct BatchOrchestratorApp {
     pub(crate) scenario_running: bool,
     /// 마지막 오류 메시지.
     pub(crate) last_error: Option<String>,
+    /// 시나리오 빌더 상태.
+    pub(crate) editor_state: ScenarioEditorState,
+    /// 시나리오 빌더 오류 메시지.
+    pub(crate) editor_error: Option<String>,
+    /// 현재 활성 탭.
+    pub(crate) active_tab: AppTab,
 }
 
 impl BatchOrchestratorApp {
@@ -60,6 +78,9 @@ impl BatchOrchestratorApp {
             cancel_token: None,
             scenario_running: false,
             last_error: None,
+            editor_state: ScenarioEditorState::new(),
+            editor_error: None,
+            active_tab: AppTab::Run,
         }
     }
 
@@ -140,23 +161,29 @@ impl BatchOrchestratorApp {
     /// 주어진 경로의 YAML을 파싱한다.
     pub(super) fn apply_scenario_path(&mut self, path: PathBuf) {
         match load_scenario_from_file(&path) {
-            Ok(scenario) => {
-                self.step_states.clear();
-                self.step_logs.clear();
-                for step in &scenario.steps {
-                    self.step_states
-                        .insert(step.id.clone(), StepRuntimeState::new());
-                    self.step_logs.insert(step.id.clone(), Vec::new());
-                }
-                self.selected_step = scenario.steps.first().map(|s| s.id.clone());
-                self.scenario = Some(scenario);
-                self.scenario_path = Some(path);
-                self.last_error = None;
-            }
+            Ok(scenario) => self.apply_loaded_scenario(scenario, path),
             Err(err) => {
                 self.last_error = Some(err.to_string());
             }
         }
+    }
+
+    /// 로드된 시나리오를 공용 상태에 반영한다.
+    fn apply_loaded_scenario(&mut self, scenario: Scenario, path: PathBuf) {
+        self.step_states.clear();
+        self.step_logs.clear();
+        for step in &scenario.steps {
+            self.step_states
+                .insert(step.id.clone(), StepRuntimeState::new());
+            self.step_logs.insert(step.id.clone(), Vec::new());
+        }
+        self.selected_step = scenario.steps.first().map(|s| s.id.clone());
+        self.editor_state = scenario_to_editor_state(&scenario);
+        self.editor_state.current_file = Some(path.clone());
+        self.editor_state.dirty = false;
+        self.scenario = Some(scenario);
+        self.scenario_path = Some(path);
+        self.last_error = None;
     }
 
     /// 시나리오 실행을 시작한다.
@@ -200,6 +227,83 @@ impl BatchOrchestratorApp {
         self.scenario_running = false;
     }
 
+    /// 새 시나리오 빌더 문서를 생성한다.
+    pub(super) fn editor_new_document(&mut self) {
+        self.editor_state = ScenarioEditorState::new();
+        self.editor_error = None;
+    }
+
+    /// 파일 다이얼로그에서 YAML을 로드한다.
+    pub(super) fn editor_open_dialog(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("YAML", &["yaml", "yml"])
+            .pick_file()
+        {
+            self.editor_open_from_path(path.into());
+        }
+    }
+
+    /// 지정된 경로의 YAML을 에디터로 불러온다.
+    pub(super) fn editor_open_from_path(&mut self, path: PathBuf) {
+        match load_scenario_from_file(&path) {
+            Ok(scenario) => {
+                self.apply_loaded_scenario(scenario, path);
+                self.editor_error = None;
+            }
+            Err(err) => {
+                self.editor_error = Some(err.to_string());
+            }
+        }
+    }
+
+    /// 에디터 상태를 YAML로 저장한다.
+    pub(super) fn editor_save(&mut self, save_as: bool) {
+        match editor_state_to_scenario(&self.editor_state) {
+            Ok(scenario) => {
+                let target_path = if save_as {
+                    rfd::FileDialog::new()
+                        .add_filter("YAML", &["yaml", "yml"])
+                        .save_file()
+                } else {
+                    self.editor_state.current_file.clone().or_else(|| {
+                        rfd::FileDialog::new()
+                            .add_filter("YAML", &["yaml", "yml"])
+                            .save_file()
+                    })
+                };
+                if let Some(path) = target_path {
+                    if let Err(err) = save_scenario_to_file(&scenario, &path) {
+                        self.editor_error = Some(err);
+                        return;
+                    }
+                    self.editor_state.current_file = Some(path.clone());
+                    self.editor_state.dirty = false;
+                    self.scenario = Some(scenario);
+                    self.scenario_path = Some(path);
+                    self.editor_error = None;
+                }
+            }
+            Err(err) => {
+                self.editor_error = Some(err.to_string());
+            }
+        }
+    }
+
+    /// 에디터 상태를 엔진에 전달해 실행한다.
+    pub(super) fn editor_run_current(&mut self) {
+        match editor_state_to_scenario(&self.editor_state) {
+            Ok(scenario) => {
+                self.editor_error = None;
+                self.scenario = Some(scenario);
+                self.scenario_path = self.editor_state.current_file.clone();
+                self.start_scenario();
+            }
+            Err(err) => {
+                self.editor_error = Some(err.to_string());
+            }
+        }
+    }
+
     /// 선택된 Step의 로그 배열을 반환한다.
     pub(super) fn selected_logs(&self) -> Vec<String> {
         if let Some(step_id) = &self.selected_step {
@@ -226,4 +330,12 @@ impl BatchOrchestratorApp {
             0.0
         }
     }
+}
+
+/// Scenario 구조체를 파일로 저장한다.
+fn save_scenario_to_file(scenario: &Scenario, path: &PathBuf) -> Result<(), String> {
+    let mut file = File::create(path).map_err(|e| e.to_string())?;
+    let yaml = serde_yaml::to_string(scenario).map_err(|e| e.to_string())?;
+    file.write_all(yaml.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(())
 }

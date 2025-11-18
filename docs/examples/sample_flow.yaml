@@ -1,0 +1,46 @@
+name: "Power Automate 스타일 샘플"
+steps:
+  - id: load_customers
+    name: 고객 목록 추출
+    kind: sql
+    sql: |
+      SELECT *
+      FROM customers
+      WHERE updated_at >= current_date - interval '1 day';
+    target_db: crm
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+  - id: load_orders
+    name: 주문 조회
+    kind: sql_file
+    sql_file: sql/orders.sql
+    target_db: dw
+    depends_on:
+      - load_customers
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 120
+  - id: load_to_ods
+    name: SQL*Loader 적재
+    kind: sql_loader_par
+    sqlldr:
+      control_file: par/orders.ctl
+      data_file: par/orders.dat
+      log_file: par/orders.log
+    depends_on:
+      - load_orders
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 120
+  - id: notify
+    name: 정리 스크립트
+    kind: shell
+    shell:
+      script: echo "적재 완료"
+      shell_program: /bin/bash
+    depends_on:
+      - load_to_ods
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60

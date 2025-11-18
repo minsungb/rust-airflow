@@ -3,6 +3,7 @@
 mod app;
 mod engine;
 mod executor;
+mod editor;
 mod scenario;
 mod theme;
 

@@ -1,8 +1,9 @@
+use crate::editor::ScenarioBuilderUi;
 use crate::engine::StepStatus;
 use eframe::egui::{self, RichText};
 
-use super::state::BatchOrchestratorApp;
-use super::widgets::{PrimaryButton, StepCard, solid_section_header};
+use super::state::{AppTab, BatchOrchestratorApp};
+use super::widgets::{solid_section_header, PrimaryButton, StepCard};
 
 impl BatchOrchestratorApp {
     /// 좌측 Step 리스트 패널을 그린다.
@@ -116,8 +117,8 @@ impl BatchOrchestratorApp {
             });
     }
 
-    /// 상단 툴바를 그린다.
-    pub(super) fn render_toolbar(&mut self, ui: &mut egui::Ui) {
+    /// 실행 탭 상단 툴바를 그린다.
+    pub(super) fn render_run_toolbar(&mut self, ui: &mut egui::Ui) {
         let decorations = *self.theme.decorations();
         let palette = *self.theme.palette();
         ui.set_min_height(130.0);
@@ -172,13 +173,109 @@ impl BatchOrchestratorApp {
             });
         });
     }
-}
 
-impl eframe::App for BatchOrchestratorApp {
-    /// egui 메인 루프에서 호출되어 UI를 갱신한다.
-    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        self.drain_events();
-        self.theme.apply(ctx);
+    /// 시나리오 빌더 전용 툴바를 렌더링한다.
+    pub(super) fn render_builder_toolbar(&mut self, ui: &mut egui::Ui) {
+        let palette = *self.theme.palette();
+        ui.vertical(|ui| {
+            ui.label(
+                RichText::new("🛠️ Scenario Builder")
+                    .size(20.0)
+                    .color(palette.fg_text_primary)
+                    .strong(),
+            );
+            if let Some(path) = &self.editor_state.current_file {
+                let dirty = if self.editor_state.dirty {
+                    " (수정됨)"
+                } else {
+                    ""
+                };
+                ui.label(
+                    RichText::new(format!("파일 · {}{}", path.display(), dirty))
+                        .color(palette.fg_text_secondary),
+                );
+            } else {
+                let dirty = if self.editor_state.dirty {
+                    " · 수정됨"
+                } else {
+                    ""
+                };
+                ui.label(
+                    RichText::new(format!("새 시나리오{}", dirty)).color(palette.fg_text_secondary),
+                );
+            }
+            if let Some(err) = &self.editor_error {
+                ui.label(RichText::new(err).color(palette.accent_error).strong());
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .add(PrimaryButton::new(&self.theme, "새 시나리오").icon("🆕"))
+                    .clicked()
+                {
+                    self.editor_new_document();
+                }
+                if ui
+                    .add(PrimaryButton::new(&self.theme, "열기...").icon("📂"))
+                    .clicked()
+                {
+                    self.editor_open_dialog();
+                }
+                if ui
+                    .add(PrimaryButton::new(&self.theme, "저장").icon("💾"))
+                    .clicked()
+                {
+                    self.editor_save(false);
+                }
+                if ui
+                    .add(PrimaryButton::new(&self.theme, "다른 이름으로").icon("📝"))
+                    .clicked()
+                {
+                    self.editor_save(true);
+                }
+                if ui
+                    .add(PrimaryButton::new(&self.theme, "실행").icon("🚀"))
+                    .clicked()
+                {
+                    self.editor_run_current();
+                }
+            });
+        });
+    }
+
+    /// 탭 선택 바를 렌더링한다.
+    fn render_tab_selector(&mut self, ctx: &egui::Context) {
+        let palette = *self.theme.palette();
+        let decorations = *self.theme.decorations();
+        let frame = egui::Frame {
+            fill: palette.bg_panel,
+            stroke: egui::Stroke::new(1.0, palette.border_soft),
+            rounding: egui::Rounding::same(decorations.container_rounding),
+            inner_margin: egui::Margin::symmetric(12.0, 8.0),
+            ..Default::default()
+        };
+        egui::TopBottomPanel::top("tab_selector")
+            .frame(frame)
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 10.0;
+                    let tabs = [
+                        (AppTab::Run, "실행"),
+                        (AppTab::ScenarioBuilder, "Scenario Builder"),
+                    ];
+                    for (tab, label) in tabs {
+                        let selected = self.active_tab == tab;
+                        if ui.selectable_label(selected, label).clicked() {
+                            self.active_tab = tab;
+                        }
+                    }
+                });
+            });
+    }
+
+    /// 실행 탭 전체 레이아웃을 렌더링한다.
+    fn render_run_view(&mut self, ctx: &egui::Context) {
         let palette = *self.theme.palette();
         let decorations = *self.theme.decorations();
         let toolbar_frame = egui::Frame {
@@ -188,11 +285,11 @@ impl eframe::App for BatchOrchestratorApp {
             inner_margin: egui::Margin::symmetric(20.0, 20.0),
             ..Default::default()
         };
-        egui::TopBottomPanel::top("toolbar")
+        egui::TopBottomPanel::top("run_toolbar")
             .frame(toolbar_frame)
             .resizable(false)
             .show(ctx, |ui| {
-                self.render_toolbar(ui);
+                self.render_run_toolbar(ui);
             });
         let sidebar_frame = egui::Frame {
             fill: palette.bg_sidebar,
@@ -229,8 +326,8 @@ impl eframe::App for BatchOrchestratorApp {
                             self.render_step_detail(ui);
                         });
                     egui::ScrollArea::vertical()
-                        .auto_shrink([false; 2]) // 작은 크기일 때 자동 축소 방지
-                        .max_height(400.0) // 최대 높이 설정
+                        .auto_shrink([false; 2])
+                        .max_height(400.0)
                         .show(ui, |ui| {
                             egui::Frame::none()
                                 .fill(palette.bg_log)
@@ -268,6 +365,40 @@ impl eframe::App for BatchOrchestratorApp {
                     );
                 });
             });
+    }
+
+    /// 시나리오 빌더 탭 전체 레이아웃을 렌더링한다.
+    fn render_builder_view(&mut self, ctx: &egui::Context) {
+        let palette = *self.theme.palette();
+        let decorations = *self.theme.decorations();
+        let toolbar_frame = egui::Frame {
+            fill: palette.bg_toolbar,
+            stroke: egui::Stroke::new(1.0, palette.border_soft),
+            rounding: egui::Rounding::same(decorations.toolbar_rounding),
+            inner_margin: egui::Margin::symmetric(16.0, 16.0),
+            ..Default::default()
+        };
+        egui::TopBottomPanel::top("builder_toolbar")
+            .frame(toolbar_frame)
+            .resizable(false)
+            .show(ctx, |ui| {
+                self.render_builder_toolbar(ui);
+            });
+        let mut builder_ui = ScenarioBuilderUi::new(&self.theme, &mut self.editor_state);
+        builder_ui.show(ctx);
+    }
+}
+
+impl eframe::App for BatchOrchestratorApp {
+    /// egui 메인 루프에서 호출되어 UI를 갱신한다.
+    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        self.drain_events();
+        self.theme.apply(ctx);
+        self.render_tab_selector(ctx);
+        match self.active_tab {
+            AppTab::Run => self.render_run_view(ctx),
+            AppTab::ScenarioBuilder => self.render_builder_view(ctx),
+        }
     }
 }
 
