@@ -17,6 +17,8 @@ rfd = "0.13"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 tokio-util = { version = "0.7", features = ["rt", "codec"] }
+deadpool-postgres = { version = "0.12", features = ["serde"] }
+tokio-postgres = "0.7"
 ico = "0.3"
 
 [build-dependencies]
