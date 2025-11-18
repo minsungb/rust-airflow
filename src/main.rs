@@ -10,6 +10,7 @@ use eframe::egui;
 use app::BatchOrchestratorApp;
 use std::io::Cursor;
 
+/// egui 애플리케이션을 초기화하고 실행하는 진입점입니다.
 fn main() -> eframe::Result<()> {
     tracing_subscriber::fmt::init();
 
