@@ -10,14 +10,13 @@ async-trait = "0.1"
 eframe = { version = "0.26", default-features = false, features = ["wgpu", "default_fonts"] }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process", "fs", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "process", "fs", "sync"] }
 thiserror = "1"
 futures = "0.3"
 rfd = "0.13"
 tracing = "0.1"
 tracing-subscriber = "0.3"
-parking_lot = "0.12"
-tokio-util = { version = "0.7", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 ico = "0.3"
 
 [build-dependencies]
