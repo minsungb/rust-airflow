@@ -18,7 +18,7 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_icon(load_icon_from_ico())
             .with_app_id("Rust Airflow")
-            .with_inner_size([1200.0, 720.0])
+            .with_inner_size([1200.0, 780.0])
             .with_drag_and_drop(true),
         ..Default::default()
     };

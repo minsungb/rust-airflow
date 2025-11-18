@@ -173,7 +173,7 @@ impl BatchOrchestratorApp {
     pub(super) fn render_toolbar(&mut self, ui: &mut egui::Ui) {
         let decorations = *self.theme.decorations();
         let palette = *self.theme.palette();
-        ui.set_min_height(220.0);
+        ui.set_min_height(150.0);
         ui.vertical(|ui| {
             ui.label(
                 RichText::new("✨ Rust Batch Orchestrator")
@@ -284,14 +284,19 @@ impl eframe::App for BatchOrchestratorApp {
                         .show(ui, |ui| {
                             self.render_step_detail(ui);
                         });
-                    egui::Frame::none()
-                        .fill(palette.bg_log)
-                        .stroke(egui::Stroke::new(1.0, palette.border_soft))
-                        .rounding(egui::Rounding::same(decorations.card_rounding))
-                        .inner_margin(decorations.card_inner_margin)
-                        .show(ui, |ui| {
-                            self.render_log_panel(ui);
-                        });
+                    egui::ScrollArea::vertical()
+                    .auto_shrink([false; 2]) // 작은 크기일 때 자동 축소 방지
+                    .max_height(400.0) // 최대 높이 설정
+                    .show(ui, |ui| {
+                        egui::Frame::none()
+                            .fill(palette.bg_log)
+                            .stroke(egui::Stroke::new(1.0, palette.border_soft))
+                            .rounding(egui::Rounding::same(decorations.card_rounding))
+                            .inner_margin(decorations.card_inner_margin)
+                            .show(ui, |ui| {
+                                self.render_log_panel(ui);
+                            });
+                    });
                 });
             });
         let progress_frame = egui::Frame {
