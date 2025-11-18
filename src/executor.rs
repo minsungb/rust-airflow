@@ -1,14 +1,5 @@
-use crate::engine::EngineEvent;
-use crate::scenario::SqlLoaderParConfig;
-use anyhow::Context;
 use async_trait::async_trait;
-use futures::StreamExt;
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::process::Command;
-use tokio::sync::mpsc::UnboundedSender;
-use tokio::time::timeout;
-use tokio_util::codec::{FramedRead, LinesCodec};
 
 mod oracle_db_executor;
 mod real_db_executor;
@@ -37,82 +28,3 @@ impl DbExecutor for DummyExecutor {
 
 /// DbExecutor를 공유하기 위한 Arc 타입 별칭이다.
 pub type SharedExecutor = Arc<dyn DbExecutor>;
-
-/// sqlldr 프로세스를 실행하고 로그를 EngineEvent로 전달한다.
-pub async fn run_sqlldr(
-    config: &SqlLoaderParConfig,
-    timeout_duration: Duration,
-    sender: &UnboundedSender<EngineEvent>,
-    step_id: &str,
-) -> anyhow::Result<()> {
-    let mut command = Command::new("sqlldr");
-    let conn = config
-        .conn
-        .clone()
-        .or_else(|| std::env::var("DB_CONN").ok())
-        .ok_or_else(|| anyhow::anyhow!("sqlldr 접속 문자열을 찾을 수 없습니다."))?;
-    command.arg(conn);
-    command.arg(format!("control={}", config.control_file.display()));
-    if let Some(data) = &config.data_file {
-        command.arg(format!("data={}", data.display()));
-    }
-    if let Some(log) = &config.log_file {
-        command.arg(format!("log={}", log.display()));
-    }
-    if let Some(bad) = &config.bad_file {
-        command.arg(format!("bad={}", bad.display()));
-    }
-    if let Some(discard) = &config.discard_file {
-        command.arg(format!("discard={}", discard.display()));
-    }
-    command.stdout(std::process::Stdio::piped());
-    command.stderr(std::process::Stdio::piped());
-    let mut child = command
-        .spawn()
-        .with_context(|| format!("sqlldr 실행 실패: {}", config.control_file.display()))?;
-    if let Some(stdout) = child.stdout.take() {
-        let tx = sender.clone();
-        let id = step_id.to_string();
-        tokio::spawn(forward_sqlldr_output(stdout, tx, id, "sqlldr STDOUT"));
-    }
-    if let Some(stderr) = child.stderr.take() {
-        let tx = sender.clone();
-        let id = step_id.to_string();
-        tokio::spawn(forward_sqlldr_output(stderr, tx, id, "sqlldr STDERR"));
-    }
-    let status = timeout(timeout_duration, child.wait()).await??;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(anyhow::anyhow!("sqlldr 종료 코드: {status}"))
-    }
-}
-
-/// sqlldr 프로세스의 파이프를 읽고 로그 이벤트로 전송한다.
-async fn forward_sqlldr_output<R>(
-    reader: R,
-    sender: UnboundedSender<EngineEvent>,
-    step_id: String,
-    tag: &'static str,
-) where
-    R: tokio::io::AsyncRead + Unpin + Send + 'static,
-{
-    let mut lines = FramedRead::new(reader, LinesCodec::new());
-    while let Some(line_result) = lines.next().await {
-        match line_result {
-            Ok(line) => {
-                let _ = sender.send(EngineEvent::StepLog {
-                    step_id: step_id.clone(),
-                    line: format!("{tag}: {line}"),
-                });
-            }
-            Err(err) => {
-                let _ = sender.send(EngineEvent::StepLog {
-                    step_id: step_id.clone(),
-                    line: format!("{tag} 읽기 오류: {err}"),
-                });
-                break;
-            }
-        }
-    }
-}
