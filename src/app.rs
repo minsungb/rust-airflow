@@ -89,7 +89,6 @@ impl BatchOrchestratorApp {
         }
     }
 
-
     /// Step 상태를 Running으로 갱신한다.
     fn mark_step_running(&mut self, step_id: &str) {
         let state = self.step_states.entry(step_id.to_string()).or_default();
@@ -233,6 +232,7 @@ impl BatchOrchestratorApp {
     /// 좌측 Step 리스트 패널을 그린다.
     fn render_step_panel(&mut self, ui: &mut egui::Ui) {
         ui.heading("Steps");
+        ui.add_space(6.0);
         if let Some(scenario) = &self.scenario {
             for step in &scenario.steps {
                 let state = self
@@ -252,6 +252,7 @@ impl BatchOrchestratorApp {
                 let indicator =
                     egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 4.0, rect.max.y));
                 painter.rect_filled(indicator, 2.0, color);
+                response.on_hover_text(format!("상태: {:?}", state.status));
                 if response.clicked() {
                     self.selected_step = Some(step.id.clone());
                 }
@@ -278,7 +279,10 @@ impl BatchOrchestratorApp {
                     ui.label(format!("재시도 횟수: {}", step.retry));
                     ui.label(format!("타임아웃: {}초", step.timeout_sec));
                     ui.label(format!("의존성: {}", step.depends_on.join(", ")));
-                    ui.label(format!("상태: {:?}", state.status));
+                    ui.colored_label(
+                        self.theme.status_color(&state.status),
+                        format!("상태: {:?}", state.status),
+                    );
                 }
             }
         } else {
@@ -317,7 +321,7 @@ impl BatchOrchestratorApp {
             ui.label(format!("로드됨: {}", path.display()));
         }
         if let Some(err) = &self.last_error {
-            ui.colored_label(egui::Color32::RED, err);
+            ui.colored_label(self.theme.palette().accent_error, err);
         }
     }
 }
@@ -327,29 +331,80 @@ impl eframe::App for BatchOrchestratorApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         self.drain_events();
         self.theme.apply(ctx);
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            self.render_toolbar(ui);
-        });
+        let palette = *self.theme.palette();
+        let toolbar_frame = egui::Frame {
+            fill: palette.bg_toolbar,
+            stroke: egui::Stroke::new(1.0, palette.border_soft),
+            rounding: egui::Rounding::same(14.0),
+            inner_margin: egui::Margin::symmetric(18.0, 12.0),
+            ..Default::default()
+        };
+        egui::TopBottomPanel::top("toolbar")
+            .frame(toolbar_frame)
+            .show(ctx, |ui| {
+                self.render_toolbar(ui);
+            });
+        let sidebar_frame = egui::Frame {
+            fill: palette.bg_sidebar,
+            stroke: egui::Stroke::new(1.0, palette.border_soft),
+            rounding: egui::Rounding::same(12.0),
+            inner_margin: egui::Margin::symmetric(12.0, 12.0),
+            ..Default::default()
+        };
         egui::SidePanel::left("steps")
             .resizable(false)
             .default_width(280.0)
+            .frame(sidebar_frame)
             .show(ctx, |ui| {
                 self.render_step_panel(ui);
             });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical(|ui| {
-                egui::Frame::group(ui.style()).show(ui, |ui| {
-                    self.render_step_detail(ui);
-                });
-                ui.add_space(8.0);
-                egui::Frame::group(ui.style()).show(ui, |ui| {
-                    self.render_log_panel(ui);
+        let central_frame = egui::Frame {
+            fill: palette.bg_main,
+            stroke: egui::Stroke::new(1.0, palette.border_soft),
+            rounding: egui::Rounding::same(18.0),
+            inner_margin: egui::Margin::symmetric(18.0, 16.0),
+            ..Default::default()
+        };
+        egui::CentralPanel::default()
+            .frame(central_frame)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    egui::Frame::none()
+                        .fill(palette.bg_panel)
+                        .stroke(egui::Stroke::new(1.0, palette.border_soft))
+                        .rounding(egui::Rounding::same(12.0))
+                        .inner_margin(egui::Margin::symmetric(16.0, 12.0))
+                        .show(ui, |ui| {
+                            self.render_step_detail(ui);
+                        });
+                    ui.add_space(8.0);
+                    egui::Frame::none()
+                        .fill(palette.bg_log)
+                        .stroke(egui::Stroke::new(1.0, palette.border_soft))
+                        .rounding(egui::Rounding::same(12.0))
+                        .inner_margin(egui::Margin::symmetric(16.0, 12.0))
+                        .show(ui, |ui| {
+                            self.render_log_panel(ui);
+                        });
                 });
             });
-        });
-        egui::TopBottomPanel::bottom("progress").show(ctx, |ui| {
-            let ratio = self.progress_ratio();
-            ui.add(egui::ProgressBar::new(ratio).text(format!("진행률: {:.0}%", ratio * 100.0)));
-        });
+        let progress_frame = egui::Frame {
+            fill: palette.bg_panel,
+            stroke: egui::Stroke::new(1.0, palette.border_soft),
+            rounding: egui::Rounding::same(14.0),
+            inner_margin: egui::Margin::symmetric(18.0, 10.0),
+            ..Default::default()
+        };
+        egui::TopBottomPanel::bottom("progress")
+            .frame(progress_frame)
+            .show(ctx, |ui| {
+                let ratio = self.progress_ratio();
+                ui.add(
+                    egui::ProgressBar::new(ratio)
+                        .fill(palette.accent_primary)
+                        .bg_fill(palette.bg_sidebar)
+                        .text(format!("진행률: {:.0}%", ratio * 100.0)),
+                );
+            });
     }
 }
