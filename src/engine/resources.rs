@@ -5,17 +5,43 @@ use crate::executor::{
 use crate::scenario::{DbConnectionConfig, DbKind, Scenario};
 use anyhow::Context;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 
 /// 엔진 실행 중 필요한 공용 리소스를 캡슐화한다.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EngineHandles {
     /// DB 이름별 실행기 맵이다.
     pub(crate) db_map: HashMap<String, SharedExecutor>,
 }
 
+impl fmt::Debug for EngineHandles {
+    /// EngineHandles의 디버그 출력을 DB 이름 목록만 포함하도록 생성한다.
+    ///
+    /// # 매개변수
+    /// * `f` - 문자열을 작성할 [`fmt::Formatter`] 참조
+    ///
+    /// # 반환값
+    /// * [`fmt::Result`] - 포매팅 성공 여부
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let keys: Vec<&String> = self.db_map.keys().collect();
+        f.debug_struct("EngineHandles")
+            .field("db_map_keys", &keys)
+            .finish()
+    }
+}
+
 impl EngineHandles {
     /// 지정한 DB 타겟에 대한 실행기를 반환한다.
+    ///
+    /// # 매개변수
+    /// * `name` - 조회할 DB 타겟 이름
+    ///
+    /// # 반환값
+    /// * [`SharedExecutor`] - 타겟이 존재할 경우 실행기를 담은 스마트 포인터
+    ///
+    /// # 오류
+    /// * 존재하지 않는 타겟을 요청하면 [`anyhow::Error`]를 반환한다.
     pub fn get_db_executor(&self, name: &str) -> anyhow::Result<SharedExecutor> {
         self.db_map
             .get(name)
@@ -25,6 +51,17 @@ impl EngineHandles {
 }
 
 /// Scenario 정의를 기반으로 DB 실행기 맵을 구성한다.
+///
+/// # 매개변수
+/// * `scenario` - DB 설정 정보를 포함한 시나리오
+/// * `default_executor` - default 키로 등록할 기본 실행기
+/// * `ctx` - 환경 변수를 확장하기 위한 실행 컨텍스트
+///
+/// # 반환값
+/// * [`EngineHandles`] - 구축된 DB 실행기 맵을 담은 핸들러
+///
+/// # 오류
+/// * 실행기 생성에 실패하면 [`anyhow::Error`]를 반환한다.
 pub async fn prepare_engine_handles(
     scenario: &Scenario,
     default_executor: SharedExecutor,
@@ -41,6 +78,17 @@ pub async fn prepare_engine_handles(
     Ok(EngineHandles { db_map })
 }
 
+/// DB 연결 설정을 바탕으로 적절한 실행기를 생성한다.
+///
+/// # 매개변수
+/// * `config` - 대상 DB 연결 정보
+/// * `ctx` - 변수 확장을 수행할 실행 컨텍스트
+///
+/// # 반환값
+/// * [`SharedExecutor`] - 생성된 실행기를 감싼 스마트 포인터
+///
+/// # 오류
+/// * 연결 정보가 누락되었거나 생성 중 오류가 발생하면 [`anyhow::Error`]를 반환한다.
 async fn build_executor_from_config(
     config: &DbConnectionConfig,
     ctx: SharedExecutionContext,
@@ -63,6 +111,18 @@ async fn build_executor_from_config(
     }
 }
 
+/// 필수 문자열 값을 컨텍스트 기반으로 확장한다.
+///
+/// # 매개변수
+/// * `ctx` - 환경 값을 제공하는 실행 컨텍스트
+/// * `value` - 원본 문자열 옵션
+/// * `field` - 오류 메시지에 사용할 필드명
+///
+/// # 반환값
+/// * `String` - 확장된 문자열
+///
+/// # 오류
+/// * 값이 없거나 확장 실패 시 [`anyhow::Error`]를 반환한다.
 async fn expand_required(
     ctx: SharedExecutionContext,
     value: Option<String>,
@@ -73,6 +133,18 @@ async fn expand_required(
     guard.expand_required(&raw, field)
 }
 
+/// 선택적 문자열 값을 컨텍스트 기반으로 확장한다.
+///
+/// # 매개변수
+/// * `ctx` - 환경 값을 제공하는 실행 컨텍스트
+/// * `value` - 원본 문자열 옵션
+/// * `field` - 오류 메시지에 사용할 필드명
+///
+/// # 반환값
+/// * `Option<String>` - 확장된 문자열 또는 값이 없을 경우 `None`
+///
+/// # 오류
+/// * 값이 존재하지만 확장에 실패하면 [`anyhow::Error`]를 반환한다.
 async fn expand_optional(
     ctx: SharedExecutionContext,
     value: Option<String>,
