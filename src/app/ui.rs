@@ -7,32 +7,39 @@ use super::widgets::{PrimaryButton, StepCard, solid_section_header};
 impl BatchOrchestratorApp {
     /// 좌측 Step 리스트 패널을 그린다.
     pub(super) fn render_step_panel(&mut self, ui: &mut egui::Ui) {
+        let palette = *self.theme.palette();
         solid_section_header(ui, &self.theme, "🧭", "작업 단계");
         ui.add_space(12.0);
         ui.spacing_mut().item_spacing.y = 12.0;
-        let palette = *self.theme.palette();
-        let decorations = *self.theme.decorations();
-        if let Some(scenario) = &self.scenario {
-            for step in &scenario.steps {
-                let state = self.step_states.get(&step.id).cloned().unwrap_or_default();
-                let status_color = self.theme.status_color(&state.status);
-                let (status_icon, status_text) = status_indicator(&state.status);
-                let is_selected = self.selected_step.as_deref() == Some(step.id.as_str());
-                let response = ui.add(
-                    StepCard::new(&self.theme, step.name.as_str(), step.id.as_str())
-                        .status(status_icon, status_text, status_color)
-                        .selected(is_selected),
-                );
-                if response.clicked() {
-                    self.selected_step = Some(step.id.clone());
+
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false]) // 내용이 적어도 폭/높이 유지
+            // .max_height(260.0)        // ← 필요하면 높이 제한도 가능
+            .show(ui, |ui| {
+                if let Some(scenario) = &self.scenario {
+                    for step in &scenario.steps {
+                        let state = self.step_states.get(&step.id).cloned().unwrap_or_default();
+                        let status_color = self.theme.status_color(&state.status);
+                        let (status_icon, status_text) = status_indicator(&state.status);
+                        let is_selected = self.selected_step.as_deref() == Some(step.id.as_str());
+
+                        let response = ui.add(
+                            StepCard::new(&self.theme, step.name.as_str(), step.id.as_str())
+                                .status(status_icon, status_text, status_color)
+                                .selected(is_selected),
+                        );
+
+                        if response.clicked() {
+                            self.selected_step = Some(step.id.clone());
+                        }
+                    }
+                } else {
+                    let info = egui::RichText::new("시나리오를 먼저 불러오세요.")
+                        .color(palette.fg_text_secondary)
+                        .italics();
+                    ui.label(info);
                 }
-            }
-        } else {
-            let info = RichText::new("시나리오를 먼저 불러오세요.")
-                .color(palette.fg_text_secondary)
-                .italics();
-            ui.label(info);
-        }
+            });
     }
 
     /// Step 상세 정보를 표시한다.
@@ -201,7 +208,7 @@ impl eframe::App for BatchOrchestratorApp {
         };
         egui::SidePanel::left("steps")
             .resizable(false)
-            .default_width(280.0)
+            .default_width(320.0)
             .frame(sidebar_frame)
             .show(ctx, |ui| {
                 self.render_step_panel(ui);

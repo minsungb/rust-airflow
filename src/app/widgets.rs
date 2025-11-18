@@ -51,67 +51,89 @@ impl<'a> StepCard<'a> {
 }
 
 impl<'a> Widget for StepCard<'a> {
-    /// egui Widget 구현을 통해 StepCard를 화면에 렌더링한다.
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         let palette = *self.theme.palette();
         let decorations = *self.theme.decorations();
-        let (rect, response) = ui.allocate_exact_size(
-            egui::vec2(ui.available_width(), self.height),
-            egui::Sense::click(),
+
+        let desired_size = egui::vec2(ui.available_width(), self.height);
+
+        // 여기서는 레이아웃만 확보 (Sense::hover 정도만 줘도 됨)
+        let (rect, _dummy_response) =
+            ui.allocate_exact_size(desired_size, egui::Sense::hover());
+
+        if !ui.is_rect_visible(rect) {
+            // 아직 화면에 안 보이면 바로 반환
+            return _dummy_response;
+        }
+
+        // ---------- 여기까지: 카드 배치/rect 계산 ----------
+
+        // 배경/테두리 그리기
+        let fill = if self.is_selected {
+            palette.bg_panel
+        } else {
+            palette.bg_sidebar
+        };
+
+        let stroke_color = if self.is_selected {
+            self.status_color
+        } else {
+            palette.border_soft
+        };
+
+        ui.painter().rect(
+            rect,
+            egui::Rounding::same(decorations.card_rounding),
+            fill,
+            egui::Stroke::new(1.5, stroke_color),
         );
 
-        if ui.is_rect_visible(rect) {
-            let fill = if self.is_selected {
-                palette.bg_panel
-            } else {
-                palette.bg_sidebar
-            };
-            let stroke_color = if self.is_selected {
-                self.status_color
-            } else {
-                palette.border_soft
-            };
-            ui.painter().rect(
-                rect,
-                egui::Rounding::same(decorations.card_rounding),
-                fill,
-                egui::Stroke::new(1.5, stroke_color),
+        // 좌측 상태 인디케이터
+        let indicator =
+            egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 5.0, rect.max.y));
+        ui.painter().rect_filled(
+            indicator,
+            egui::Rounding::same(decorations.card_rounding),
+            self.status_color,
+        );
+
+        // 내용 영역 UI
+        let content_rect = rect.shrink2(egui::vec2(
+            decorations.card_inner_margin.left,
+            decorations.card_inner_margin.top,
+        ));
+
+        let mut content_ui = ui.child_ui(
+            content_rect,
+            egui::Layout::left_to_right(egui::Align::Center),
+        );
+
+        content_ui.spacing_mut().item_spacing.x = 14.0;
+
+        if !self.status_icon.is_empty() {
+            content_ui.label(
+                RichText::new(self.status_icon)
+                    .size(26.0)
+                    .color(self.status_color),
             );
-            let indicator =
-                egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + 5.0, rect.max.y));
-            ui.painter().rect_filled(
-                indicator,
-                egui::Rounding::same(decorations.card_rounding),
-                self.status_color,
+        }
+
+        content_ui.vertical(|ui| {
+            ui.label(
+                RichText::new(self.name)
+                    .size(17.0)
+                    .color(palette.fg_text_primary)
+                    .strong(),
             );
-            let content_rect = rect.shrink2(egui::vec2(
-                decorations.card_inner_margin.left,
-                decorations.card_inner_margin.top,
-            ));
-            let mut content_ui = ui.child_ui(
-                content_rect,
-                egui::Layout::left_to_right(egui::Align::Center),
+            ui.label(
+                RichText::new(format!("ID: {}", self.step_id))
+                    .color(palette.fg_text_secondary),
             );
-            content_ui.spacing_mut().item_spacing.x = 14.0;
-            if !self.status_icon.is_empty() {
-                content_ui.label(
-                    RichText::new(self.status_icon)
-                        .size(26.0)
-                        .color(self.status_color),
-                );
-            }
-            content_ui.vertical(|ui| {
-                ui.label(
-                    RichText::new(self.name)
-                        .size(17.0)
-                        .color(palette.fg_text_primary)
-                        .strong(),
-                );
-                ui.label(
-                    RichText::new(format!("ID: {}", self.step_id)).color(palette.fg_text_secondary),
-                );
-            });
-            content_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        });
+
+        content_ui.with_layout(
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
                 if !self.status_text.is_empty() {
                     ui.label(
                         RichText::new(self.status_text)
@@ -120,8 +142,12 @@ impl<'a> Widget for StepCard<'a> {
                             .strong(),
                     );
                 }
-            });
-        }
+            },
+        );
+
+        let id = ui.id().with(self.step_id); // 또는 with("step_card")
+        let mut response = ui.interact(rect, id, egui::Sense::click());
+        response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
 
         response
     }
