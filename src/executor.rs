@@ -11,6 +11,9 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::time::timeout;
 use tokio_util::codec::{FramedRead, LinesCodec};
 
+mod real_db_executor;
+pub use real_db_executor::{RealDbExecutor, new_real_db_executor};
+
 /// DbExecutor는 SQL 실행을 위한 추상 계층을 정의한다.
 #[async_trait]
 pub trait DbExecutor: Send + Sync {
