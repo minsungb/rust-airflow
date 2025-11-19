@@ -1,22 +1,117 @@
 use super::*;
 
 impl<'a> ScenarioBuilderUi<'a> {
+    /// DB 연결 목록을 편집할 수 있는 섹션을 렌더링한다.
+    fn render_db_section(
+        ui: &mut egui::Ui,
+        state: &mut ScenarioEditorState,
+        mark_dirty: &mut bool,
+        palette: ThemePalette,
+        decorations: ThemeDecorations,
+    ) {
+        ui.heading("🗄 DB 설정");
+        ui.label("SQL/SQL 파일 Step에서 사용할 DB 접속 정보를 정의합니다.");
+        if !state.has_default_db() {
+            ui.colored_label(
+                palette.accent_warning,
+                "default 키가 없으면 target_db 미지정 Step이 실패합니다.",
+            );
+        }
+        if state.db_connections.is_empty() {
+            ui.label("등록된 DB 연결이 없습니다. 'DB 연결 추가' 버튼으로 새 항목을 만드세요.");
+        }
+        let mut remove_idx: Option<usize> = None;
+        for (idx, conn) in state.db_connections.iter_mut().enumerate() {
+            ui.add_space(6.0);
+            ui.push_id(idx, |ui| {
+                egui::Frame::none()
+                    .fill(palette.bg_panel)
+                    .stroke(egui::Stroke::new(1.0, palette.border_soft))
+                    .rounding(egui::Rounding::same(decorations.card_rounding))
+                    .inner_margin(egui::Margin::symmetric(8.0, 6.0))
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("키");
+                            if ui.text_edit_singleline(&mut conn.key).changed() {
+                                *mark_dirty = true;
+                            }
+                            if ui.button("삭제").clicked() {
+                                remove_idx = Some(idx);
+                            }
+                        });
+                        if conn.key.trim() == "default" {
+                            ui.small("default는 target_db 미지정 시 사용됩니다.");
+                        }
+                        egui::ComboBox::from_label("종류")
+                            .selected_text(match conn.kind {
+                                DbKind::Oracle => "Oracle",
+                                DbKind::Postgres => "PostgreSQL",
+                                DbKind::Dummy => "(미지원)",
+                            })
+                            .show_ui(ui, |ui| {
+                                if ui
+                                    .selectable_label(matches!(conn.kind, DbKind::Oracle), "Oracle")
+                                    .clicked()
+                                {
+                                    conn.kind = DbKind::Oracle;
+                                    *mark_dirty = true;
+                                }
+                                if ui
+                                    .selectable_label(
+                                        matches!(conn.kind, DbKind::Postgres),
+                                        "PostgreSQL",
+                                    )
+                                    .clicked()
+                                {
+                                    conn.kind = DbKind::Postgres;
+                                    *mark_dirty = true;
+                                }
+                            });
+                        ui.label("DSN / 접속 문자열");
+                        if ui.text_edit_singleline(&mut conn.dsn).changed() {
+                            *mark_dirty = true;
+                        }
+                        ui.label("사용자");
+                        if ui.text_edit_singleline(&mut conn.user).changed() {
+                            *mark_dirty = true;
+                        }
+                        ui.label("비밀번호");
+                        if ui.text_edit_singleline(&mut conn.password).changed() {
+                            *mark_dirty = true;
+                        }
+                    });
+            });
+        }
+        if let Some(idx) = remove_idx {
+            state.db_connections.remove(idx);
+            *mark_dirty = true;
+        }
+        if ui.button("DB 연결 추가").clicked() {
+            let new_key = state.generate_db_key();
+            state
+                .db_connections
+                .push(DbConnectionEditor::new(new_key, DbKind::Oracle));
+            *mark_dirty = true;
+        }
+        ui.add_space(8.0);
+    }
+
     /// 우측 속성 패널을 렌더링한다.
     pub(super) fn render_properties(&mut self, ui: &mut egui::Ui) {
         let mut mark_dirty = false;
         let palette = *self.get_theme().palette();
         let decorations = *self.get_theme().decorations();
 
-        ui.heading("⚙️ Step 속성");
-        ui.separator();
-
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_width(320.0);
                 let mut selected_runtime_id: Option<String> = None;
-                // `get_state_mut()` 한 번만 호출하여 가변 참조를 받음
                 let state = self.get_state_mut();
+                Self::render_db_section(ui, state, &mut mark_dirty, palette, decorations);
+                ui.separator();
+                ui.heading("⚙️ Step 속성");
+                let db_keys = state.db_key_list();
 
                 if let Some(selected_id) = state.selected_node_id.clone() {
                     if let Some(selected) = state.node_mut(&selected_id) {
@@ -70,7 +165,13 @@ impl<'a> ScenarioBuilderUi<'a> {
 
                         ui.separator();
 
-                        Self::render_step_config_ui(ui, &mut selected.config, &mut mark_dirty);
+                        Self::render_step_config_ui(
+                            ui,
+                            &mut selected.config,
+                            &mut mark_dirty,
+                            &db_keys,
+                            selected.id.as_str(),
+                        );
                         Self::render_confirm_section(ui, &mut selected.confirm, &mut mark_dirty);
                         if selected.kind == StepKind::Loop {
                             Self::render_loop_section(
@@ -79,6 +180,7 @@ impl<'a> ScenarioBuilderUi<'a> {
                                 &mut mark_dirty,
                                 palette,
                                 decorations,
+                                &db_keys,
                             );
                         }
                     } else {
@@ -102,7 +204,8 @@ impl<'a> ScenarioBuilderUi<'a> {
                                     ui.horizontal(|ui| {
                                         ui.label(&dep_id);
                                         if ui.button("삭제").clicked() {
-                                            self.get_state_mut().remove_connection(&dep_id, &selected_id);
+                                            self.get_state_mut()
+                                                .remove_connection(&dep_id, &selected_id);
                                             mark_dirty = true;
                                         }
                                     });
@@ -126,7 +229,7 @@ impl<'a> ScenarioBuilderUi<'a> {
                         .show_ui(ui, |ui| {
                             for option in &options {
                                 if ui.selectable_label(false, option).clicked() {
-                                    self.get_state_mut().add_connection(option, &selected_id);
+                                    state.add_connection(option, &selected_id);
                                     mark_dirty = true;
                                 }
                             }
@@ -134,7 +237,7 @@ impl<'a> ScenarioBuilderUi<'a> {
 
                     ui.separator();
                     if ui.button("이 Step 삭제").clicked() {
-                        self.get_state_mut().remove_node(&selected_id);
+                        state.remove_node(&selected_id);
                         mark_dirty = true;
                     }
                 }
@@ -147,35 +250,19 @@ impl<'a> ScenarioBuilderUi<'a> {
         ui: &mut egui::Ui,
         config: &mut EditorStepConfig,
         mark_dirty: &mut bool,
+        db_keys: &[String],
+        id_hint: &str,
     ) {
         match config {
             EditorStepConfig::Sql { sql, target_db } => {
-                ui.label("대상 DB");
-                let mut db_buf = target_db.clone().unwrap_or_default();
-                if ui.text_edit_singleline(&mut db_buf).changed() {
-                    *target_db = if db_buf.is_empty() {
-                        None
-                    } else {
-                        Some(db_buf)
-                    };
-                    *mark_dirty = true;
-                }
+                Self::render_target_db_picker(ui, target_db, db_keys, mark_dirty, id_hint);
                 ui.label("SQL");
                 if ui.text_edit_multiline(sql).changed() {
                     *mark_dirty = true;
                 }
             }
             EditorStepConfig::SqlFile { path, target_db } => {
-                ui.label("대상 DB");
-                let mut db_buf = target_db.clone().unwrap_or_default();
-                if ui.text_edit_singleline(&mut db_buf).changed() {
-                    *target_db = if db_buf.is_empty() {
-                        None
-                    } else {
-                        Some(db_buf)
-                    };
-                    *mark_dirty = true;
-                }
+                Self::render_target_db_picker(ui, target_db, db_keys, mark_dirty, id_hint);
                 ui.label("SQL 파일 경로");
                 let mut path_buf = path.display().to_string();
                 if ui.text_edit_singleline(&mut path_buf).changed() {
@@ -194,6 +281,43 @@ impl<'a> ScenarioBuilderUi<'a> {
             }
             EditorStepConfig::Loop { .. } => {}
         }
+    }
+
+    /// target_db를 선택할 수 있는 공용 콤보박스를 렌더링한다.
+    fn render_target_db_picker(
+        ui: &mut egui::Ui,
+        target_db: &mut Option<String>,
+        db_keys: &[String],
+        mark_dirty: &mut bool,
+        id_hint: &str,
+    ) {
+        ui.label("DB 타겟(target_db)");
+        let selected_text = target_db
+            .as_deref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "(기본 DB 사용)".to_string());
+        ui.push_id(format!("target_db_{id_hint}"), |ui| {
+            egui::ComboBox::from_id_source("target_db_combo")
+                .selected_text(selected_text)
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(target_db.is_none(), "(기본 DB 사용)")
+                        .clicked()
+                    {
+                        if target_db.is_some() {
+                            *target_db = None;
+                            *mark_dirty = true;
+                        }
+                    }
+                    for key in db_keys {
+                        let selected = target_db.as_deref() == Some(key.as_str());
+                        if ui.selectable_label(selected, key).clicked() && !selected {
+                            *target_db = Some(key.clone());
+                            *mark_dirty = true;
+                        }
+                    }
+                });
+        });
     }
 
     /// 컨펌 설정 UI를 그린다.
@@ -290,6 +414,7 @@ impl<'a> ScenarioBuilderUi<'a> {
         mark_dirty: &mut bool,
         palette: ThemePalette,
         decorations: ThemeDecorations,
+        db_keys: &[String],
     ) {
         let EditorStepConfig::Loop { config } = &mut node.config else {
             return;
@@ -441,7 +566,13 @@ impl<'a> ScenarioBuilderUi<'a> {
                         }
 
                         ui.separator();
-                        Self::render_step_config_ui(ui, &mut child.config, mark_dirty);
+                        Self::render_step_config_ui(
+                            ui,
+                            &mut child.config,
+                            mark_dirty,
+                            db_keys,
+                            child.id.as_str(),
+                        );
                         Self::render_confirm_section(ui, &mut child.confirm, mark_dirty);
 
                         egui::ScrollArea::vertical()
@@ -507,6 +638,7 @@ impl<'a> ScenarioBuilderUi<'a> {
             config.conn = if conn.is_empty() { None } else { Some(conn) };
             *mark_dirty = true;
         }
+        ui.small("비워두면 SQLLDR_CONN 환경 변수를 사용합니다.");
     }
 
     /// 선택적 경로 필드를 렌더링한다.

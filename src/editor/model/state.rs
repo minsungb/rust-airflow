@@ -2,6 +2,7 @@ use eframe::egui;
 use std::collections::HashSet;
 
 use super::connection::EditorConnection;
+use super::db::DbConnectionEditor;
 use super::step::{EditorStepNode, StepKind};
 
 /// 시나리오 에디터 전체 상태를 저장한다.
@@ -11,6 +12,8 @@ pub struct ScenarioEditorState {
     pub nodes: Vec<EditorStepNode>,
     /// 연결 목록.
     pub connections: Vec<EditorConnection>,
+    /// 전역 DB 연결 구성 목록.
+    pub db_connections: Vec<DbConnectionEditor>,
     /// 선택된 노드 ID.
     pub selected_node_id: Option<String>,
     /// 현재 파일 경로.
@@ -31,6 +34,7 @@ impl ScenarioEditorState {
         Self {
             nodes: Vec::new(),
             connections: Vec::new(),
+            db_connections: Vec::new(),
             selected_node_id: None,
             current_file: None,
             canvas_offset: egui::vec2(0.0, 0.0),
@@ -122,6 +126,47 @@ impl ScenarioEditorState {
         self.connections
             .retain(|conn| !(conn.from_id == from_id && conn.to_id == to_id));
         self.dirty = true;
+    }
+
+    /// target_db 드롭다운에서 사용할 정렬된 DB 키 목록을 반환한다.
+    pub fn db_key_list(&self) -> Vec<String> {
+        let mut keys: Vec<String> = self
+            .db_connections
+            .iter()
+            .map(|conn| conn.key.clone())
+            .collect();
+        keys.sort();
+        keys
+    }
+
+    /// 비어 있는 기본 키 또는 순번 기반 새로운 DB 키를 생성한다.
+    pub fn generate_db_key(&self) -> String {
+        if !self
+            .db_connections
+            .iter()
+            .any(|conn| conn.key.trim() == "default")
+        {
+            return "default".to_string();
+        }
+        let mut idx = 1;
+        loop {
+            let candidate = format!("db{idx}");
+            if self
+                .db_connections
+                .iter()
+                .all(|conn| conn.key.trim() != candidate)
+            {
+                return candidate;
+            }
+            idx += 1;
+        }
+    }
+
+    /// default 키 존재 여부를 반환한다.
+    pub fn has_default_db(&self) -> bool {
+        self.db_connections
+            .iter()
+            .any(|conn| conn.key.trim() == "default")
     }
 }
 

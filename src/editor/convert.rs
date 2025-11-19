@@ -1,14 +1,35 @@
 use super::model::{
-    EditorConnection, EditorError, EditorStepConfig, EditorStepNode, LoopEditorConfig,
-    ScenarioEditorState,
+    DbConnectionEditor, EditorConnection, EditorError, EditorStepConfig, EditorStepNode,
+    LoopEditorConfig, ScenarioEditorState,
 };
-use crate::scenario::Scenario;
+use crate::scenario::{DbConnectionConfig, DbKind, Scenario};
 use eframe::egui;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 /// Scenario를 에디터 상태로 변환한다.
-pub fn scenario_to_editor_state(scenario: &Scenario) -> ScenarioEditorState {
+pub fn scenario_to_editor_state(scenario: &Scenario) -> Result<ScenarioEditorState, EditorError> {
     let mut state = ScenarioEditorState::new();
+    let mut db_entries: Vec<_> = scenario.db.iter().collect();
+    db_entries.sort_by(|a, b| a.0.cmp(b.0));
+    for (key, config) in db_entries {
+        match config.kind {
+            DbKind::Oracle | DbKind::Postgres => {
+                state.db_connections.push(DbConnectionEditor {
+                    key: key.clone(),
+                    kind: config.kind.clone(),
+                    dsn: config.dsn.clone().unwrap_or_default(),
+                    user: config.user.clone().unwrap_or_default(),
+                    password: config.password.clone().unwrap_or_default(),
+                });
+            }
+            other => {
+                return Err(EditorError::UnsupportedDbKind {
+                    key: key.clone(),
+                    kind: format!("{:?}", other),
+                });
+            }
+        }
+    }
     let mut levels: HashMap<String, usize> = HashMap::new();
     for step in &scenario.steps {
         let node = EditorStepNode::from_scenario_step(step);
@@ -45,7 +66,7 @@ pub fn scenario_to_editor_state(scenario: &Scenario) -> ScenarioEditorState {
             }
         }
     }
-    state
+    Ok(state)
 }
 
 /// 재귀적으로 노드 레벨을 계산한다.
@@ -101,7 +122,7 @@ pub fn editor_state_to_scenario(state: &ScenarioEditorState) -> Result<Scenario,
         .unwrap_or_else(|| "Scenario Builder".into());
     let mut scenario = Scenario {
         name: scenario_name,
-        db: Default::default(),
+        db: serialize_db_connections(state)?,
         steps: Vec::new(),
     };
     for node in &state.nodes {
@@ -109,6 +130,50 @@ pub fn editor_state_to_scenario(state: &ScenarioEditorState) -> Result<Scenario,
         scenario.steps.push(node.to_scenario_step(deps)?);
     }
     Ok(scenario)
+}
+
+/// 에디터 상태의 DB 연결 정의를 Scenario용 맵으로 변환한다.
+fn serialize_db_connections(
+    state: &ScenarioEditorState,
+) -> Result<HashMap<String, DbConnectionConfig>, EditorError> {
+    let mut result = HashMap::new();
+    let mut keys = HashSet::new();
+    for conn in &state.db_connections {
+        let trimmed = conn.key.trim();
+        if trimmed.is_empty() {
+            return Err(EditorError::EmptyDbKey);
+        }
+        let key = trimmed.to_string();
+        if !keys.insert(key.clone()) {
+            return Err(EditorError::DuplicateDbKey(key));
+        }
+        match conn.kind {
+            DbKind::Oracle | DbKind::Postgres => {}
+            ref other => {
+                return Err(EditorError::UnsupportedDbKind {
+                    key: conn.key.clone(),
+                    kind: format!("{:?}", other),
+                });
+            }
+        }
+        let config = DbConnectionConfig {
+            kind: conn.kind.clone(),
+            dsn: optional_string(&conn.dsn),
+            user: optional_string(&conn.user),
+            password: optional_string(&conn.password),
+        };
+        result.insert(key, config);
+    }
+    Ok(result)
+}
+
+/// 공백 문자열을 None으로 변환한다.
+fn optional_string(value: &str) -> Option<String> {
+    if value.trim().is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
 }
 
 /// 위상 정렬을 사용해 사이클 여부를 판별한다.
