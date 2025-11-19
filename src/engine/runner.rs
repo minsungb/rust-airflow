@@ -71,6 +71,7 @@ pub async fn run_scenario(
             let step_id = step.id.clone();
             started.insert(step_id.clone());
             mark_step_started(&mut runtime, &step_id, &sender);
+            let confirm_bridge = confirm_bridge.clone();
             let exec_handles = handles.clone();
             let exec_ctx = ctx.clone();
             let tx = sender.clone();
@@ -82,7 +83,7 @@ pub async fn run_scenario(
                     exec_ctx,
                     tx,
                     token,
-                    confirm_bridge.clone(),
+                    confirm_bridge,
                 )
                 .await;
                 (step_id, outcome)
