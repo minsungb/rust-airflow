@@ -9,6 +9,27 @@ pub struct ScenarioBuilderUi<'a> {
 }
 
 impl<'a> ScenarioBuilderUi<'a> {
+    pub fn get_state(&self) -> &ScenarioEditorState {  // 수정: ScenarioEditorState 반환
+        &self.state
+    }
+
+    pub fn get_state_mut(&mut self) -> &mut ScenarioEditorState {  // 수정: ScenarioEditorState 반환
+        &mut self.state
+    }
+
+    pub fn select_node(&mut self, id: &Option<String>) -> Option<String> {
+        self.state.select_node(id.clone());  // 클로닝해서 사용
+        id.clone()  // id를 클론하여 반환
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.state.select_node(None);
+    }
+
+    pub fn get_theme(&self) -> &Theme {
+        self.theme
+    }
+    
     /// 뷰 인스턴스를 생성한다.
     pub fn new(theme: &'a Theme, state: &'a mut ScenarioEditorState) -> Self {
         Self { theme, state }

@@ -4,6 +4,8 @@ impl<'a> ScenarioBuilderUi<'a> {
     /// 우측 속성 패널을 렌더링한다.
     pub(super) fn render_properties(&mut self, ui: &mut egui::Ui) {
         let mut mark_dirty = false;
+        let palette = *self.get_theme().palette();
+        let decorations = *self.get_theme().decorations();
 
         ui.heading("⚙️ Step 속성");
         ui.separator();
@@ -13,9 +15,11 @@ impl<'a> ScenarioBuilderUi<'a> {
             .show(ui, |ui| {
                 ui.set_width(320.0);
                 let mut selected_runtime_id: Option<String> = None;
+                // `get_state_mut()` 한 번만 호출하여 가변 참조를 받음
+                let state = self.get_state_mut();
 
-                if let Some(selected_id) = self.state.selected_node_id.clone() {
-                    if let Some(selected) = self.state.node_mut(&selected_id) {
+                if let Some(selected_id) = state.selected_node_id.clone() {
+                    if let Some(selected) = state.node_mut(&selected_id) {
                         selected_runtime_id = Some(selected.id.clone());
 
                         let mut id_buf = selected.id.clone();
@@ -69,8 +73,6 @@ impl<'a> ScenarioBuilderUi<'a> {
                         Self::render_step_config_ui(ui, &mut selected.config, &mut mark_dirty);
                         Self::render_confirm_section(ui, &mut selected.confirm, &mut mark_dirty);
                         if selected.kind == StepKind::Loop {
-                            let palette = *self.theme.palette();
-                            let decorations = *self.theme.decorations();
                             Self::render_loop_section(
                                 ui,
                                 selected,
@@ -90,17 +92,17 @@ impl<'a> ScenarioBuilderUi<'a> {
                     ui.separator();
                     ui.label("의존성");
 
-                    if !self.state.nodes.is_empty() {
+                    if !self.get_state().nodes.is_empty() {
                         egui::ScrollArea::vertical()
                             .max_height(120.0)
                             .show(ui, |ui| {
-                                let deps = self.state.dependencies_of(&selected_id);
+                                let deps = self.get_state().dependencies_of(&selected_id);
                                 for dep in deps {
                                     let dep_id = dep.clone();
                                     ui.horizontal(|ui| {
                                         ui.label(&dep_id);
                                         if ui.button("삭제").clicked() {
-                                            self.state.remove_connection(&dep_id, &selected_id);
+                                            self.get_state_mut().remove_connection(&dep_id, &selected_id);
                                             mark_dirty = true;
                                         }
                                     });
@@ -111,7 +113,7 @@ impl<'a> ScenarioBuilderUi<'a> {
                     ui.add_space(6.0);
 
                     let mut options: Vec<String> = self
-                        .state
+                        .get_state()
                         .nodes
                         .iter()
                         .filter(|node| node.id != selected_id)
@@ -124,7 +126,7 @@ impl<'a> ScenarioBuilderUi<'a> {
                         .show_ui(ui, |ui| {
                             for option in &options {
                                 if ui.selectable_label(false, option).clicked() {
-                                    self.state.add_connection(option, &selected_id);
+                                    self.get_state_mut().add_connection(option, &selected_id);
                                     mark_dirty = true;
                                 }
                             }
@@ -132,12 +134,12 @@ impl<'a> ScenarioBuilderUi<'a> {
 
                     ui.separator();
                     if ui.button("이 Step 삭제").clicked() {
-                        self.state.remove_node(&selected_id);
+                        self.get_state_mut().remove_node(&selected_id);
                         mark_dirty = true;
                     }
                 }
             });
-        self.state.dirty = mark_dirty;
+        self.get_state_mut().dirty = mark_dirty;
     }
 
     /// Step 구성 UI를 노출한다.

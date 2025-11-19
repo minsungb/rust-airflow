@@ -12,13 +12,13 @@ impl<'a> ScenarioBuilderUi<'a> {
                 let painter = ui.painter_at(rect);
                 let mut pending_selection: Option<String> = None;
                 if response.clicked() && !response.dragged() {
-                    self.state.select_node(None);
+                    self.clear_selection();
                 }
                 let origin = rect.min.to_vec2();
                 self.draw_connections(&painter, colors, origin);
-                for idx in 0..self.state.nodes.len() {
+                for idx in 0..self.get_state().nodes.len() {
                     let (node_id, node_rect) = {
-                        let node = &self.state.nodes[idx];
+                        let node = &self.get_state().nodes[idx];
                         let shape = egui::Rect::from_min_size(
                             rect.min + node.position.to_vec2(),
                             node.size,
@@ -29,34 +29,41 @@ impl<'a> ScenarioBuilderUi<'a> {
                     let node_response =
                         ui.interact(node_rect, response_id, egui::Sense::click_and_drag());
                     if node_response.dragged() {
-                        if let Some(node) = self.state.node_mut(&node_id) {
+                        if let Some(node) = self.get_state_mut().node_mut(&node_id) {
                             node.position += node_response.drag_delta();
                         }
-                        self.state.dirty = true;
+                        self.get_state_mut().dirty = true;
                     }
                     if node_response.clicked() {
                         pending_selection = Some(node_id.clone());
                     }
-                    if let Some(node) = self.state.node(&node_id) {
+                    if let Some(node) = self.get_state().node(&node_id) {
                         self.draw_node(&painter, node_rect, node, colors);
                     }
                 }
                 if let Some(id) = pending_selection {
-                    self.state.select_node(Some(id));
+                    self.get_state_mut().select_node(Some(id));
                 }
             });
     }
 
     /// 연결 선을 그린다.
-    fn draw_connections(&self, painter: &egui::Painter, colors: BuilderColors, origin: egui::Vec2) {
-        for conn in &self.state.connections {
-            if let (Some(from), Some(to)) =
-                (self.state.node(&conn.from_id), self.state.node(&conn.to_id))
-            {
+    fn draw_connections(&mut self, painter: &egui::Painter, colors: BuilderColors, origin: egui::Vec2) {
+        let connections = self.get_state().connections.clone();  // 불변 참조로 먼저 사용
+        for conn in connections {
+            self.get_state_mut().select_node(Some(conn.from_id.clone()));  // 가변 참조 사용
+            self.get_state_mut().select_node(Some(conn.to_id.clone()));
+
+            // 연결을 그리는 로직을 계속 진행
+            if let (Some(from), Some(to)) = (
+                self.get_state().node(&conn.from_id),
+                self.get_state().node(&conn.to_id),
+            ) {
                 let start = from.position + egui::vec2(from.size.x / 2.0, from.size.y);
                 let end = to.position + egui::vec2(to.size.x / 2.0, 0.0);
                 let start = egui::pos2(start.x + origin.x, start.y + origin.y);
                 let end = egui::pos2(end.x + origin.x, end.y + origin.y);
+
                 painter.add(CubicBezierShape::from_points_stroke(
                     [
                         start,
@@ -103,7 +110,7 @@ impl<'a> ScenarioBuilderUi<'a> {
             egui::FontId::proportional(12.0),
             colors.text_secondary,
         );
-        let visual = self.theme.step_visual(Self::visual_kind_for(node.kind));
+        let visual = self.get_theme().step_visual(Self::visual_kind_for(node.kind));
         let mut subtitle = visual.label.to_string();
         if let EditorStepConfig::Extract { config } = &node.config {
             if config.var_name.is_empty() {

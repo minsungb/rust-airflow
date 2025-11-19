@@ -16,7 +16,7 @@ impl<'a> ScenarioBuilderUi<'a> {
             ("Loop (반복)", StepKind::Loop),
         ] {
             if ui.button(label).clicked() {
-                self.state.add_node(kind);
+                self.get_state_mut().add_node(kind);
             }
         }
     }
