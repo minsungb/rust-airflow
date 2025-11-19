@@ -1,0 +1,48 @@
+name: "loop_extract_demo"
+steps:
+  - id: "loop_container"
+    name: "Loop with Extract"
+    kind: loop
+    loop:
+      for_each_glob: "data/*.txt"
+      as_var: "CURRENT_FILE"
+      on_iteration_failure: continue
+      steps:
+        - id: "extract_iteration_value"
+          name: "파일에서 값 추출"
+          kind: extract
+          extract:
+            file_path: "${CURRENT_FILE}"
+            line: 1
+            pattern: "value=(\\w+)"
+            group: 1
+            var_name: "CURRENT_VALUE"
+          confirm:
+            before: true
+            message_before: "이 파일에서 값을 추출할까요?"
+            default_answer: yes
+          allow_parallel: false
+          retry: 0
+          timeout_sec: 60
+          depends_on: []
+        - id: "loop_sql"
+          name: "추출값 DB 저장"
+          kind: sql
+          sql: "insert into loop_audit(file_path, value_text) values ('${CURRENT_FILE}', '${CURRENT_VALUE}')"
+          allow_parallel: false
+          retry: 0
+          timeout_sec: 60
+          depends_on: ["extract_iteration_value"]
+        - id: "loop_shell"
+          name: "값 출력"
+          kind: shell
+          shell:
+            script: "echo Processing ${CURRENT_VALUE} from ${CURRENT_FILE}"
+          allow_parallel: false
+          retry: 0
+          timeout_sec: 60
+          depends_on: ["loop_sql"]
+    depends_on: []
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 300

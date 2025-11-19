@@ -1,8 +1,9 @@
 use super::model::{EditorStepConfig, ScenarioEditorState, StepKind};
-use crate::theme::{BuilderColors, Theme};
+use crate::scenario::{ExtractVarFromFileConfig, LoopIterationFailure};
+use crate::theme::{BuilderColors, StepVisualKind, Theme};
 use eframe::egui;
-use std::collections::HashMap;
 use eframe::epaint::{CubicBezierShape, Stroke};
+use std::collections::HashMap;
 
 /// Scenario Builder 화면 전체를 담당하는 뷰이다.
 pub struct ScenarioBuilderUi<'a> {
@@ -76,6 +77,8 @@ impl<'a> ScenarioBuilderUi<'a> {
             ("SQL 파일", StepKind::SqlFile),
             ("SQL*Loader", StepKind::SqlLoaderPar),
             ("Shell", StepKind::Shell),
+            ("Extract (값 추출)", StepKind::Extract),
+            ("Loop (반복)", StepKind::Loop),
         ] {
             if ui.button(label).clicked() {
                 self.state.add_node(kind);
@@ -90,9 +93,7 @@ impl<'a> ScenarioBuilderUi<'a> {
         ui.heading("⚙️ Step 속성");
         ui.separator();
 
-        egui::ScrollArea::vertical()
-        .show(ui, |ui| {
-                    
+        egui::ScrollArea::vertical().show(ui, |ui| {
             // 이 렌더 사이클에서 최종적으로 사용될 선택된 Step의 ID를 저장할 변수
             let mut selected_runtime_id: Option<String> = None;
 
@@ -150,47 +151,10 @@ impl<'a> ScenarioBuilderUi<'a> {
 
                     ui.separator();
 
-                    match &mut selected.config {
-                        EditorStepConfig::Sql { sql, target_db } => {
-                            ui.label("대상 DB");
-                            let mut db_buf = target_db.clone().unwrap_or_default();
-                            if ui.text_edit_singleline(&mut db_buf).changed() {
-                                *target_db = if db_buf.is_empty() {
-                                    None
-                                } else {
-                                    Some(db_buf)
-                                };
-                                mark_dirty = true;
-                            }
-                            ui.label("SQL");
-                            if ui.text_edit_multiline(sql).changed() {
-                                mark_dirty = true;
-                            }
-                        }
-                        EditorStepConfig::SqlFile { path, target_db } => {
-                            ui.label("대상 DB");
-                            let mut db_buf = target_db.clone().unwrap_or_default();
-                            if ui.text_edit_singleline(&mut db_buf).changed() {
-                                *target_db = if db_buf.is_empty() {
-                                    None
-                                } else {
-                                    Some(db_buf)
-                                };
-                                mark_dirty = true;
-                            }
-                            ui.label("SQL 파일 경로");
-                            let mut path_buf = path.display().to_string();
-                            if ui.text_edit_singleline(&mut path_buf).changed() {
-                                *path = std::path::PathBuf::from(path_buf);
-                                mark_dirty = true;
-                            }
-                        }
-                        EditorStepConfig::SqlLoaderPar { config } => {
-                            Self::render_sqlldr(ui, config, &mut mark_dirty);
-                        }
-                        EditorStepConfig::Shell { config } => {
-                            Self::render_shell(ui, config, &mut mark_dirty);
-                        }
+                    Self::render_step_config_ui(ui, &mut selected.config, &mut mark_dirty);
+                    Self::render_confirm_section(ui, &mut selected.confirm, &mut mark_dirty);
+                    if selected.kind == StepKind::Loop {
+                        self.render_loop_drawer(ui.ctx(), selected, &mut mark_dirty);
                     }
                     // ---- 여기까지 selected에 대한 편집만 수행 (self.state 다른 메서드 호출 X) ----
                 } else {
@@ -257,6 +221,340 @@ impl<'a> ScenarioBuilderUi<'a> {
         self.state.dirty = mark_dirty;
     }
 
+    /// Step 구성 UI를 노출한다.
+    fn render_step_config_ui(
+        ui: &mut egui::Ui,
+        config: &mut EditorStepConfig,
+        mark_dirty: &mut bool,
+    ) {
+        match config {
+            EditorStepConfig::Sql { sql, target_db } => {
+                ui.label("대상 DB");
+                let mut db_buf = target_db.clone().unwrap_or_default();
+                if ui.text_edit_singleline(&mut db_buf).changed() {
+                    *target_db = if db_buf.is_empty() {
+                        None
+                    } else {
+                        Some(db_buf)
+                    };
+                    *mark_dirty = true;
+                }
+                ui.label("SQL");
+                if ui.text_edit_multiline(sql).changed() {
+                    *mark_dirty = true;
+                }
+            }
+            EditorStepConfig::SqlFile { path, target_db } => {
+                ui.label("대상 DB");
+                let mut db_buf = target_db.clone().unwrap_or_default();
+                if ui.text_edit_singleline(&mut db_buf).changed() {
+                    *target_db = if db_buf.is_empty() {
+                        None
+                    } else {
+                        Some(db_buf)
+                    };
+                    *mark_dirty = true;
+                }
+                ui.label("SQL 파일 경로");
+                let mut path_buf = path.display().to_string();
+                if ui.text_edit_singleline(&mut path_buf).changed() {
+                    *path = std::path::PathBuf::from(path_buf);
+                    *mark_dirty = true;
+                }
+            }
+            EditorStepConfig::SqlLoaderPar { config } => {
+                Self::render_sqlldr(ui, config, mark_dirty);
+            }
+            EditorStepConfig::Shell { config } => {
+                Self::render_shell(ui, config, mark_dirty);
+            }
+            EditorStepConfig::Extract { config } => {
+                Self::render_extract(ui, config, mark_dirty);
+            }
+            EditorStepConfig::Loop { .. } => {
+                ui.label("Loop 세부 설정은 우측 Drawer에서 편집하세요.");
+            }
+        }
+    }
+
+    /// 컨펌 설정 UI를 그린다.
+    fn render_confirm_section(
+        ui: &mut egui::Ui,
+        confirm: &mut Option<crate::scenario::StepConfirmConfig>,
+        mark_dirty: &mut bool,
+    ) {
+        egui::CollapsingHeader::new("실행 컨펌")
+            .default_open(false)
+            .show(ui, |ui| {
+                let cfg = confirm.get_or_insert_with(|| crate::scenario::StepConfirmConfig {
+                    before: false,
+                    after: false,
+                    message_before: None,
+                    message_after: None,
+                    default_answer: ConfirmDefault::Yes,
+                });
+                if ui.checkbox(&mut cfg.before, "실행 전 확인").changed() {
+                    *mark_dirty = true;
+                }
+                if ui.checkbox(&mut cfg.after, "실행 후 확인").changed() {
+                    *mark_dirty = true;
+                }
+                ui.label("메시지 (실행 전)");
+                let mut before_msg = cfg.message_before.clone().unwrap_or_default();
+                if ui.text_edit_singleline(&mut before_msg).changed() {
+                    cfg.message_before = if before_msg.trim().is_empty() {
+                        None
+                    } else {
+                        Some(before_msg)
+                    };
+                    *mark_dirty = true;
+                }
+                ui.label("메시지 (실행 후)");
+                let mut after_msg = cfg.message_after.clone().unwrap_or_default();
+                if ui.text_edit_singleline(&mut after_msg).changed() {
+                    cfg.message_after = if after_msg.trim().is_empty() {
+                        None
+                    } else {
+                        Some(after_msg)
+                    };
+                    *mark_dirty = true;
+                }
+                egui::ComboBox::from_label("기본 응답")
+                    .selected_text(match cfg.default_answer {
+                        ConfirmDefault::Yes => "예",
+                        ConfirmDefault::No => "아니오",
+                    })
+                    .show_ui(ui, |ui| {
+                        if ui
+                            .selectable_label(
+                                matches!(cfg.default_answer, ConfirmDefault::Yes),
+                                "예",
+                            )
+                            .clicked()
+                        {
+                            cfg.default_answer = ConfirmDefault::Yes;
+                            *mark_dirty = true;
+                        }
+                        if ui
+                            .selectable_label(
+                                matches!(cfg.default_answer, ConfirmDefault::No),
+                                "아니오",
+                            )
+                            .clicked()
+                        {
+                            cfg.default_answer = ConfirmDefault::No;
+                            *mark_dirty = true;
+                        }
+                    });
+            });
+        if let Some(cfg) = confirm {
+            let empty_before = cfg
+                .message_before
+                .as_ref()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true);
+            let empty_after = cfg
+                .message_after
+                .as_ref()
+                .map(|s| s.trim().is_empty())
+                .unwrap_or(true);
+            if !cfg.before && !cfg.after && empty_before && empty_after {
+                *confirm = None;
+            }
+        }
+    }
+
+    /// Loop 전용 Drawer를 표시한다.
+    fn render_loop_drawer(
+        &mut self,
+        ctx: &egui::Context,
+        node: &mut EditorStepNode,
+        mark_dirty: &mut bool,
+    ) {
+        let EditorStepConfig::Loop { config } = &mut node.config else {
+            return;
+        };
+        let palette = *self.theme.palette();
+        egui::Area::new(egui::Id::new(format!("loop_drawer_{}", node.id)))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-20.0, 60.0))
+            .show(ctx, |ui| {
+                egui::Frame::none()
+                    .fill(palette.bg_panel)
+                    .stroke(egui::Stroke::new(1.0, palette.border_soft))
+                    .rounding(egui::Rounding::same(6.0))
+                    .inner_margin(egui::Margin::symmetric(16.0, 12.0))
+                    .show(ui, |ui| {
+                        ui.set_width(360.0);
+                        ui.heading("Loop 설정");
+                        ui.label("for_each_glob");
+                        if ui.text_edit_singleline(&mut config.for_each_glob).changed() {
+                            *mark_dirty = true;
+                        }
+                        ui.label("as 변수명");
+                        if ui.text_edit_singleline(&mut config.as_var).changed() {
+                            *mark_dirty = true;
+                        }
+                        egui::ComboBox::from_label("실패 시 동작")
+                            .selected_text(match config.on_iteration_failure {
+                                LoopIterationFailure::StopAll => "Stop All",
+                                LoopIterationFailure::Continue => "Continue",
+                            })
+                            .show_ui(ui, |ui| {
+                                if ui
+                                    .selectable_label(
+                                        matches!(
+                                            config.on_iteration_failure,
+                                            LoopIterationFailure::StopAll
+                                        ),
+                                        "Stop All",
+                                    )
+                                    .clicked()
+                                {
+                                    config.on_iteration_failure = LoopIterationFailure::StopAll;
+                                    *mark_dirty = true;
+                                }
+                                if ui
+                                    .selectable_label(
+                                        matches!(
+                                            config.on_iteration_failure,
+                                            LoopIterationFailure::Continue
+                                        ),
+                                        "Continue",
+                                    )
+                                    .clicked()
+                                {
+                                    config.on_iteration_failure = LoopIterationFailure::Continue;
+                                    *mark_dirty = true;
+                                }
+                            });
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            ui.label("하위 Step");
+                            ui.menu_button("추가", |ui| {
+                                for (label, kind) in [
+                                    ("SQL", StepKind::Sql),
+                                    ("SQL 파일", StepKind::SqlFile),
+                                    ("SQL*Loader", StepKind::SqlLoaderPar),
+                                    ("Shell", StepKind::Shell),
+                                    ("Extract", StepKind::Extract),
+                                    ("Loop", StepKind::Loop),
+                                ] {
+                                    if ui.button(label).clicked() {
+                                        let new_id = config.generate_child_id();
+                                        let mut child = EditorStepNode::new(
+                                            new_id.clone(),
+                                            format!("Loop Step {new_id}"),
+                                            kind,
+                                        );
+                                        child.position = egui::pos2(20.0, 20.0);
+                                        config.nodes.push(child);
+                                        config.selected_node_id = Some(new_id);
+                                        *mark_dirty = true;
+                                        ui.close_menu();
+                                    }
+                                }
+                            });
+                            if let Some(selected_id) = config.selected_node_id.clone() {
+                                if ui.button("선택 Step 삭제").clicked() {
+                                    config.remove_node(&selected_id);
+                                    *mark_dirty = true;
+                                }
+                            }
+                        });
+                        egui::ScrollArea::vertical()
+                            .max_height(160.0)
+                            .show(ui, |ui| {
+                                for child in &config.nodes {
+                                    let selected = config.selected_node_id.as_deref()
+                                        == Some(child.id.as_str());
+                                    if ui
+                                        .selectable_label(
+                                            selected,
+                                            format!("{} ({:?})", child.name, child.kind),
+                                        )
+                                        .clicked()
+                                    {
+                                        config.selected_node_id = Some(child.id.clone());
+                                    }
+                                }
+                            });
+                        if let Some(selected_id) = config.selected_node_id.clone() {
+                            if let Some(child) = config.node_mut(&selected_id) {
+                                ui.separator();
+                                ui.heading("선택된 하위 Step");
+                                ui.label(format!("ID: {}", child.id));
+                                let mut name_buf = child.name.clone();
+                                if ui.text_edit_singleline(&mut name_buf).changed() {
+                                    child.name = name_buf;
+                                    *mark_dirty = true;
+                                }
+                                if ui
+                                    .checkbox(&mut child.allow_parallel, "병렬 허용")
+                                    .changed()
+                                {
+                                    *mark_dirty = true;
+                                }
+                                let mut retry = child.retry;
+                                if ui
+                                    .add(egui::Slider::new(&mut retry, 0..=5).text("재시도"))
+                                    .changed()
+                                {
+                                    child.retry = retry;
+                                    *mark_dirty = true;
+                                }
+                                let mut timeout = child.timeout_sec as i32;
+                                if ui
+                                    .add(
+                                        egui::DragValue::new(&mut timeout)
+                                            .prefix("타임아웃 ")
+                                            .suffix("초"),
+                                    )
+                                    .changed()
+                                {
+                                    child.timeout_sec = timeout.max(1) as u64;
+                                    *mark_dirty = true;
+                                }
+                                ui.separator();
+                                Self::render_step_config_ui(ui, &mut child.config, mark_dirty);
+                                Self::render_confirm_section(ui, &mut child.confirm, mark_dirty);
+                                ui.separator();
+                                ui.label("의존성");
+                                let deps = config.dependencies_of(&child.id);
+                                for dep in deps {
+                                    let dep_id = dep.clone();
+                                    ui.horizontal(|ui| {
+                                        ui.label(&dep_id);
+                                        if ui.button("삭제").clicked() {
+                                            config.remove_connection(&dep_id, &child.id);
+                                            *mark_dirty = true;
+                                        }
+                                    });
+                                }
+                                let mut options: Vec<String> = config
+                                    .nodes
+                                    .iter()
+                                    .filter(|n| n.id != child.id)
+                                    .map(|n| n.id.clone())
+                                    .collect();
+                                options.sort();
+                                egui::ComboBox::from_label("의존성 추가")
+                                    .selected_text("노드 선택")
+                                    .show_ui(ui, |ui| {
+                                        for option in &options {
+                                            if ui.selectable_label(false, option).clicked() {
+                                                config.add_connection(option, &child.id);
+                                                *mark_dirty = true;
+                                            }
+                                        }
+                                    });
+                            } else {
+                                config.selected_node_id = None;
+                            }
+                        }
+                    });
+            });
+    }
 
     /// SQL*Loader 속성 UI를 렌더링한다.
     fn render_sqlldr(
@@ -383,6 +681,42 @@ impl<'a> ScenarioBuilderUi<'a> {
         }
     }
 
+    /// Extract Step 속성 UI를 렌더링한다.
+    fn render_extract(
+        ui: &mut egui::Ui,
+        config: &mut ExtractVarFromFileConfig,
+        mark_dirty: &mut bool,
+    ) {
+        ui.label("파일 경로");
+        if ui.text_edit_singleline(&mut config.file_path).changed() {
+            *mark_dirty = true;
+        }
+        let mut line = config.line as i32;
+        if ui
+            .add(egui::DragValue::new(&mut line).prefix("라인 "))
+            .changed()
+        {
+            config.line = line.max(1) as usize;
+            *mark_dirty = true;
+        }
+        ui.label("정규식 패턴");
+        if ui.text_edit_singleline(&mut config.pattern).changed() {
+            *mark_dirty = true;
+        }
+        let mut group = config.group as i32;
+        if ui
+            .add(egui::DragValue::new(&mut group).prefix("캡처 그룹 "))
+            .changed()
+        {
+            config.group = group.max(0) as usize;
+            *mark_dirty = true;
+        }
+        ui.label("저장할 변수명");
+        if ui.text_edit_singleline(&mut config.var_name).changed() {
+            *mark_dirty = true;
+        }
+    }
+
     /// Shell env 문자열을 파싱한다.
     fn parse_env(text: &str) -> HashMap<String, String> {
         text.lines()
@@ -476,23 +810,20 @@ impl<'a> ScenarioBuilderUi<'a> {
                 let end = to.position + egui::vec2(to.size.x / 2.0, 0.0);
                 let start = egui::pos2(start.x + origin.x, start.y + origin.y);
                 let end = egui::pos2(end.x + origin.x, end.y + origin.y);
-                painter.add(
-                    CubicBezierShape::from_points_stroke(
-                        [
-                            start,
-                            start + egui::vec2(0.0, 60.0),
-                            end - egui::vec2(0.0, 60.0),
-                            end,
-                        ],
-                        false,                        // closed
-                        egui::Color32::TRANSPARENT,   // fill 없음
-                        Stroke::new(2.0, colors.connection_stroke),
-                    ),
-                );
+                painter.add(CubicBezierShape::from_points_stroke(
+                    [
+                        start,
+                        start + egui::vec2(0.0, 60.0),
+                        end - egui::vec2(0.0, 60.0),
+                        end,
+                    ],
+                    false,                      // closed
+                    egui::Color32::TRANSPARENT, // fill 없음
+                    Stroke::new(2.0, colors.connection_stroke),
+                ));
             }
         }
     }
-
 
     /// 개별 노드를 드로잉한다.
     fn draw_node(
@@ -525,9 +856,40 @@ impl<'a> ScenarioBuilderUi<'a> {
             egui::FontId::proportional(12.0),
             colors.text_secondary,
         );
+        let visual = self.theme.step_visual(Self::visual_kind_for(node.kind));
+        let mut subtitle = visual.label.to_string();
+        if let EditorStepConfig::Extract { config } = &node.config {
+            if config.var_name.is_empty() {
+                subtitle = format!("{} → 변수 미지정", visual.label);
+            } else {
+                subtitle = format!("{} → ${}", visual.label, config.var_name);
+            }
+        } else if let EditorStepConfig::Loop { config } = &node.config {
+            subtitle = format!("{} · {} steps", visual.label, config.nodes.len());
+        }
+        let type_pos = rect.min + egui::vec2(10.0, 48.0);
+        painter.text(
+            type_pos,
+            egui::Align2::LEFT_TOP,
+            format!("{} {}", visual.icon, subtitle),
+            egui::FontId::proportional(14.0),
+            visual.color,
+        );
         let input_center = rect.center_top() - egui::vec2(0.0, 6.0);
         let output_center = rect.center_bottom() + egui::vec2(0.0, 6.0);
         painter.circle_filled(input_center, 5.0, colors.handle_fill);
         painter.circle_filled(output_center, 5.0, colors.handle_fill);
+    }
+
+    /// StepKind를 시각 스타일 분류로 매핑한다.
+    fn visual_kind_for(kind: StepKind) -> StepVisualKind {
+        match kind {
+            StepKind::Sql => StepVisualKind::Sql,
+            StepKind::SqlFile => StepVisualKind::SqlFile,
+            StepKind::SqlLoaderPar => StepVisualKind::SqlLoader,
+            StepKind::Shell => StepVisualKind::Shell,
+            StepKind::Extract => StepVisualKind::Extract,
+            StepKind::Loop => StepVisualKind::Loop,
+        }
     }
 }

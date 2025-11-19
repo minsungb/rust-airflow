@@ -1,4 +1,7 @@
-use super::model::{EditorConnection, EditorError, EditorStepNode, ScenarioEditorState};
+use super::model::{
+    EditorConnection, EditorError, EditorStepConfig, EditorStepNode, LoopEditorConfig,
+    ScenarioEditorState,
+};
 use crate::scenario::Scenario;
 use eframe::egui;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -72,8 +75,9 @@ fn assign_level(step_id: &str, scenario: &Scenario, memo: &mut HashMap<String, u
 pub fn editor_state_to_scenario(state: &ScenarioEditorState) -> Result<Scenario, EditorError> {
     let mut ids = HashSet::new();
     for node in &state.nodes {
-        if !ids.insert(node.id.clone()) {
-            return Err(EditorError::DuplicateStepId(node.id.clone()));
+        collect_ids_from_node(node, &mut ids)?;
+        if let crate::editor::model::EditorStepConfig::Loop { config } = &node.config {
+            validate_loop_connections(config)?;
         }
     }
     for conn in &state.connections {
@@ -102,7 +106,7 @@ pub fn editor_state_to_scenario(state: &ScenarioEditorState) -> Result<Scenario,
     };
     for node in &state.nodes {
         let deps = state.dependencies_of(&node.id);
-        scenario.steps.push(node.to_scenario_step(deps));
+        scenario.steps.push(node.to_scenario_step(deps)?);
     }
     Ok(scenario)
 }
@@ -142,4 +146,88 @@ fn has_cycle(state: &ScenarioEditorState) -> bool {
         }
     }
     visited != state.nodes.len()
+}
+
+/// Loop 내부에서 중복 ID를 검사한다.
+fn collect_ids_from_node(
+    node: &EditorStepNode,
+    ids: &mut HashSet<String>,
+) -> Result<(), EditorError> {
+    if !ids.insert(node.id.clone()) {
+        return Err(EditorError::DuplicateStepId(node.id.clone()));
+    }
+    if let EditorStepConfig::Loop { config } = &node.config {
+        for child in &config.nodes {
+            collect_ids_from_node(child, ids)?;
+        }
+    }
+    Ok(())
+}
+
+/// Loop 하위 흐름의 연결/사이클을 검증한다.
+fn validate_loop_connections(config: &LoopEditorConfig) -> Result<(), EditorError> {
+    for conn in &config.connections {
+        if config.node(&conn.from_id).is_none() || config.node(&conn.to_id).is_none() {
+            return Err(EditorError::MissingNode {
+                from_id: conn.from_id.clone(),
+                to_id: conn.to_id.clone(),
+            });
+        }
+    }
+    if has_cycle_in_loop(config) {
+        return Err(EditorError::CyclicDependency);
+    }
+    for node in &config.nodes {
+        if let EditorStepConfig::Loop { config: inner } = &node.config {
+            validate_loop_connections(inner)?;
+        }
+    }
+    Ok(())
+}
+
+/// Loop 내부에 사이클이 있는지 검사한다.
+fn has_cycle_in_loop(config: &LoopEditorConfig) -> bool {
+    let mut indegree: HashMap<&str, usize> = HashMap::new();
+    let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
+    for node in &config.nodes {
+        indegree.insert(node.id.as_str(), 0);
+        adj.insert(node.id.as_str(), Vec::new());
+    }
+    for conn in &config.connections {
+        if let Some(entry) = indegree.get_mut(conn.to_id.as_str()) {
+            *entry += 1;
+        }
+        if let Some(list) = adj.get_mut(conn.from_id.as_str()) {
+            list.push(conn.to_id.as_str());
+        }
+    }
+    let mut queue: VecDeque<&str> = indegree
+        .iter()
+        .filter_map(|(id, &deg)| if deg == 0 { Some(*id) } else { None })
+        .collect();
+    let mut visited = 0;
+    while let Some(id) = queue.pop_front() {
+        visited += 1;
+        if let Some(children) = adj.get(id) {
+            for child in children {
+                if let Some(entry) = indegree.get_mut(child) {
+                    *entry -= 1;
+                    if *entry == 0 {
+                        queue.push_back(child);
+                    }
+                }
+            }
+        }
+    }
+    if visited != config.nodes.len() {
+        return true;
+    }
+    for node in &config.nodes {
+        if let EditorStepConfig::Loop { config: inner } = &node.config {
+            if has_cycle_in_loop(inner) {
+                return true;
+            }
+        }
+    }
+    false
 }

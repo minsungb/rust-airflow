@@ -1,5 +1,6 @@
 use crate::scenario::{
-    ShellConfig, SqlLoaderParConfig, Step, StepConfirmConfig, StepKind as ScenarioStepKind,
+    ExtractVarFromFileConfig, LoopIterationFailure, LoopStepConfig, ShellConfig,
+    SqlLoaderParConfig, Step, StepConfirmConfig, StepKind as ScenarioStepKind,
 };
 use eframe::egui;
 use std::collections::HashSet;
@@ -16,6 +17,10 @@ pub enum StepKind {
     SqlLoaderPar,
     /// Shell 명령 Step이다.
     Shell,
+    /// 파일에서 값을 추출하는 Step이다.
+    Extract,
+    /// Loop 컨테이너 Step이다.
+    Loop,
 }
 
 /// Step별 상세 구성을 저장한다.
@@ -44,6 +49,16 @@ pub enum EditorStepConfig {
     Shell {
         /// Shell 실행 구성.
         config: ShellConfig,
+    },
+    /// Extract Step 구성이다.
+    Extract {
+        /// 파일 추출 설정.
+        config: ExtractVarFromFileConfig,
+    },
+    /// Loop Step 구성이다.
+    Loop {
+        /// Loop 실행 설정.
+        config: LoopEditorConfig,
     },
 }
 
@@ -80,25 +95,17 @@ impl EditorStepConfig {
                     error_policy: Default::default(),
                 },
             },
-        }
-    }
-
-    /// Scenario StepKind로 변환한다.
-    pub fn to_scenario_kind(&self) -> ScenarioStepKind {
-        match self {
-            EditorStepConfig::Sql { sql, target_db } => ScenarioStepKind::Sql {
-                sql: sql.clone(),
-                target_db: target_db.clone(),
+            StepKind::Extract => EditorStepConfig::Extract {
+                config: ExtractVarFromFileConfig {
+                    file_path: String::new(),
+                    line: 1,
+                    pattern: String::new(),
+                    group: 1,
+                    var_name: String::new(),
+                },
             },
-            EditorStepConfig::SqlFile { path, target_db } => ScenarioStepKind::SqlFile {
-                path: path.clone(),
-                target_db: target_db.clone(),
-            },
-            EditorStepConfig::SqlLoaderPar { config } => ScenarioStepKind::SqlLoaderPar {
-                config: config.clone(),
-            },
-            EditorStepConfig::Shell { config } => ScenarioStepKind::Shell {
-                config: config.clone(),
+            StepKind::Loop => EditorStepConfig::Loop {
+                config: LoopEditorConfig::new(),
             },
         }
     }
@@ -132,7 +139,18 @@ impl EditorStepConfig {
                     config: config.clone(),
                 },
             ),
-            other => panic!("지원하지 않는 StepKind: {:?}", other),
+            ScenarioStepKind::Extract { config } => (
+                StepKind::Extract,
+                EditorStepConfig::Extract {
+                    config: config.clone(),
+                },
+            ),
+            ScenarioStepKind::Loop { config } => (
+                StepKind::Loop,
+                EditorStepConfig::Loop {
+                    config: LoopEditorConfig::from_scenario_config(config),
+                },
+            ),
         }
     }
 }
@@ -183,17 +201,39 @@ impl EditorStepNode {
     }
 
     /// Scenario Step으로 변환한다.
-    pub fn to_scenario_step(&self, depends_on: Vec<String>) -> Step {
-        Step {
+    pub fn to_scenario_step(&self, depends_on: Vec<String>) -> Result<Step, EditorError> {
+        let kind = match &self.config {
+            EditorStepConfig::Sql { sql, target_db } => ScenarioStepKind::Sql {
+                sql: sql.clone(),
+                target_db: target_db.clone(),
+            },
+            EditorStepConfig::SqlFile { path, target_db } => ScenarioStepKind::SqlFile {
+                path: path.clone(),
+                target_db: target_db.clone(),
+            },
+            EditorStepConfig::SqlLoaderPar { config } => ScenarioStepKind::SqlLoaderPar {
+                config: config.clone(),
+            },
+            EditorStepConfig::Shell { config } => ScenarioStepKind::Shell {
+                config: config.clone(),
+            },
+            EditorStepConfig::Extract { config } => ScenarioStepKind::Extract {
+                config: config.clone(),
+            },
+            EditorStepConfig::Loop { config } => ScenarioStepKind::Loop {
+                config: config.to_loop_step_config()?,
+            },
+        };
+        Ok(Step {
             id: self.id.clone(),
             name: self.name.clone(),
-            kind: self.config.to_scenario_kind(),
+            kind,
             depends_on,
             allow_parallel: self.allow_parallel,
             retry: self.retry,
             timeout_sec: self.timeout_sec,
             confirm: self.confirm.clone(),
-        }
+        })
     }
 
     /// Scenario Step을 기반으로 노드를 생성한다.
@@ -222,6 +262,122 @@ pub struct EditorConnection {
     pub from_id: String,
     /// 의존성을 갖는 노드 ID.
     pub to_id: String,
+}
+
+/// Loop 하위 흐름을 표현하는 구성체이다.
+#[derive(Debug, Clone)]
+pub struct LoopEditorConfig {
+    /// 반복 대상 glob 패턴.
+    pub for_each_glob: String,
+    /// 변수명.
+    pub as_var: String,
+    /// 실패 정책.
+    pub on_iteration_failure: LoopIterationFailure,
+    /// 하위 노드 목록.
+    pub nodes: Vec<EditorStepNode>,
+    /// 하위 연결 목록.
+    pub connections: Vec<EditorConnection>,
+    /// 선택된 하위 노드.
+    pub selected_node_id: Option<String>,
+}
+
+impl LoopEditorConfig {
+    /// 기본 Loop 구성을 생성한다.
+    pub fn new() -> Self {
+        Self {
+            for_each_glob: String::new(),
+            as_var: "ITEM".into(),
+            on_iteration_failure: LoopIterationFailure::StopAll,
+            nodes: Vec::new(),
+            connections: Vec::new(),
+            selected_node_id: None,
+        }
+    }
+
+    /// 시나리오 Loop 설정을 에디터 구성으로 변환한다.
+    pub fn from_scenario_config(config: &LoopStepConfig) -> Self {
+        let mut nodes = Vec::new();
+        let mut connections = Vec::new();
+        for step in &config.steps {
+            nodes.push(EditorStepNode::from_scenario_step(step));
+            for dep in &step.depends_on {
+                connections.push(EditorConnection {
+                    from_id: dep.clone(),
+                    to_id: step.id.clone(),
+                });
+            }
+        }
+        Self {
+            for_each_glob: config.for_each_glob.clone(),
+            as_var: config.as_var.clone(),
+            on_iteration_failure: config.on_iteration_failure.clone(),
+            nodes,
+            connections,
+            selected_node_id: None,
+        }
+    }
+
+    /// 하위 노드용 고유 ID를 생성한다.
+    pub fn generate_child_id(&self) -> String {
+        let mut idx = 1;
+        let ids: HashSet<&str> = self.nodes.iter().map(|n| n.id.as_str()).collect();
+        loop {
+            let candidate = format!("loop_step_{idx}");
+            if !ids.contains(candidate.as_str()) {
+                return candidate;
+            }
+            idx += 1;
+        }
+    }
+
+    /// 하위 노드를 조회한다.
+    pub fn node_mut(&mut self, id: &str) -> Option<&mut EditorStepNode> {
+        self.nodes.iter_mut().find(|node| node.id == id)
+    }
+
+    /// 하위 노드를 조회한다.
+    pub fn node(&self, id: &str) -> Option<&EditorStepNode> {
+        self.nodes.iter().find(|node| node.id == id)
+    }
+
+    /// 특정 노드의 의존성 목록을 반환한다.
+    pub fn dependencies_of(&self, id: &str) -> Vec<String> {
+        self.connections
+            .iter()
+            .filter(|conn| conn.to_id == id)
+            .map(|conn| conn.from_id.clone())
+            .collect()
+    }
+
+    /// 연결을 추가한다.
+    pub fn add_connection(&mut self, from_id: &str, to_id: &str) {
+        if from_id == to_id {
+            return;
+        }
+        let conn = EditorConnection {
+            from_id: from_id.to_string(),
+            to_id: to_id.to_string(),
+        };
+        if !self.connections.contains(&conn) {
+            self.connections.push(conn);
+        }
+    }
+
+    /// 연결을 제거한다.
+    pub fn remove_connection(&mut self, from_id: &str, to_id: &str) {
+        self.connections
+            .retain(|conn| !(conn.from_id == from_id && conn.to_id == to_id));
+    }
+
+    /// 노드를 제거하고 연결을 정리한다.
+    pub fn remove_node(&mut self, id: &str) {
+        self.nodes.retain(|node| node.id != id);
+        self.connections
+            .retain(|conn| conn.from_id != id && conn.to_id != id);
+        if self.selected_node_id.as_deref() == Some(id) {
+            self.selected_node_id = None;
+        }
+    }
 }
 
 /// 시나리오 에디터 전체 상태를 저장한다.
@@ -364,4 +520,21 @@ pub enum EditorError {
     /// 순환 의존성이 감지된 경우이다.
     #[error("순환 의존성이 감지되었습니다. 연결 구성을 확인하세요.")]
     CyclicDependency,
+}
+
+impl LoopEditorConfig {
+    /// Loop 구성을 Scenario 구조로 변환한다.
+    pub fn to_loop_step_config(&self) -> Result<LoopStepConfig, EditorError> {
+        let mut steps = Vec::new();
+        for node in &self.nodes {
+            let deps = self.dependencies_of(&node.id);
+            steps.push(node.to_scenario_step(deps)?);
+        }
+        Ok(LoopStepConfig {
+            for_each_glob: self.for_each_glob.clone(),
+            as_var: self.as_var.clone(),
+            steps,
+            on_iteration_failure: self.on_iteration_failure.clone(),
+        })
+    }
 }

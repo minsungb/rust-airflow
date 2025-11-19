@@ -161,6 +161,26 @@ pub struct LoopStepConfig {
     pub as_var: String,
     /// 반복 내에서 실행할 Step 목록.
     pub steps: Vec<Step>,
+    /// 반복 실패 시 동작을 정의한다.
+    #[serde(default)]
+    pub on_iteration_failure: LoopIterationFailure,
+}
+
+/// Loop 반복 실패 처리 정책을 정의한다.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LoopIterationFailure {
+    /// 실패 즉시 Loop를 종료한다.
+    StopAll,
+    /// 실패를 기록하고 다음 반복을 계속한다.
+    Continue,
+}
+
+impl Default for LoopIterationFailure {
+    /// 기본값은 전체 중단이다.
+    fn default() -> Self {
+        LoopIterationFailure::StopAll
+    }
 }
 
 /// StepKind는 배치 엔진이 수행할 개별 작업 유형을 표현한다.
@@ -197,7 +217,8 @@ pub enum StepKind {
         config: ShellConfig,
     },
     /// 파일에서 변수를 추출한다.
-    ExtractVarFromFile {
+    #[serde(rename = "extract", alias = "extract_var_from_file")]
+    Extract {
         /// 추출 설정.
         #[serde(rename = "extract")]
         config: ExtractVarFromFileConfig,

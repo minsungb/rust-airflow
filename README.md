@@ -4,10 +4,12 @@ Tokio + egui 기반의 경량 배치 오케스트레이터입니다. YAML로 정
 
 ## 주요 기능
 
-- SQL / SQL 파일 / sqlldr / Shell Step 지원
+- SQL / SQL 파일 / sqlldr / Shell / Extract Step 지원
 - depends_on을 이용한 DAG 실행 및 allow_parallel 기반 병렬 처리
 - Step별 재시도/타임아웃/지수 백오프 관리
 - EngineEvent 채널을 통해 CLI 엔진과 egui UI 분리
+- Loop Step 반복 실행 및 Drawer 기반 서브플로우 편집
+- Step 실행 전/후 사용자 컨펌 모달 및 CLI 기본 응답 처리
 - build.rs가 시스템 한글 폰트를 탐색하여 egui에 적용
 - Windows 빌드 시 아이콘 자동 임베드 (사용자 제공 `icons/icon.ico` 필요)
 - Power Automate 스타일의 Scenario Builder에서 드래그 앤 드롭으로 DAG 설계
@@ -18,16 +20,22 @@ Tokio + egui 기반의 경량 배치 오케스트레이터입니다. YAML로 정
 cargo run --release
 ```
 
-애플리케이션 실행 후 좌측 상단 `시나리오 열기` 버튼으로 YAML 파일을 선택합니다. 예시 시나리오는 `scenarios/sample_finance_job.yaml`에 포함되어 있습니다.
+애플리케이션 실행 후 좌측 상단 `시나리오 열기` 버튼으로 YAML 파일을 선택합니다. 예시 시나리오는 `scenarios/sample_finance_job.yaml`과 `scenarios/sample_loop_extract.yaml`에 포함되어 있습니다.
 
 ## Scenario Builder UI
 
 - 상단 탭에서 **Scenario Builder**를 선택하면 좌측 팔레트/중앙 플로우 캔버스/우측 속성 패널이 나타납니다.
-- 팔레트에서 Step 유형(SQL, SQL 파일, SQL*Loader, Shell)을 클릭하면 캔버스에 새 노드가 추가됩니다.
+- 팔레트에서 Step 유형(SQL, SQL 파일, SQL*Loader, Shell, Extract, Loop)을 클릭하면 캔버스에 새 노드가 추가됩니다.
 - 노드를 드래그해 위치를 조정하고, 우측 패널에서 ID/이름/SQL/셸 스크립트 등을 편집합니다.
+- Loop 노드를 선택하면 전용 Drawer가 열려 for_each_glob/as_var/실패 정책 및 하위 Step을 관리할 수 있습니다.
+- 모든 Step에는 컨펌 설정(before/after/message/default_answer)을 지정할 수 있어 GUI/CLI에서 동일하게 동작합니다.
 - `의존성 추가` 콤보박스로 노드 간 연결을 지정하면 `depends_on` 관계가 자동 생성됩니다.
 - 상단 빌더 툴바에서 `저장`/`다른 이름으로`를 클릭하면 YAML로 내보낼 수 있고, `실행` 버튼으로 즉시 엔진을 구동할 수 있습니다.
 - 새로 작성하거나 수정한 플로우는 `docs/examples/sample_flow.yaml`을 참고하여 테스트할 수 있습니다.
+
+### 제공 예시
+
+- `scenarios/sample_loop_extract.yaml` – Loop Step 내부에서 Extract → SQL → Shell 순으로 실행하고, Extract Step 실행 전에 컨펌 모달을 띄워 테스트할 수 있는 샘플입니다.
 
 ### Step 실행 순서
 

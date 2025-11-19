@@ -83,6 +83,34 @@ pub struct BuilderColors {
     pub handle_fill: Color32,
 }
 
+/// Step 시각 스타일을 정의한다.
+#[derive(Clone, Copy, Debug)]
+pub struct StepVisualStyle {
+    /// Step 유형 아이콘이다.
+    pub icon: &'static str,
+    /// Step 라벨이다.
+    pub label: &'static str,
+    /// 색상이다.
+    pub color: Color32,
+}
+
+/// Step 시각 분류이다.
+#[derive(Clone, Copy, Debug)]
+pub enum StepVisualKind {
+    /// SQL 직접 입력.
+    Sql,
+    /// SQL 파일.
+    SqlFile,
+    /// SQL*Loader.
+    SqlLoader,
+    /// Shell.
+    Shell,
+    /// Extract.
+    Extract,
+    /// Loop.
+    Loop,
+}
+
 /// 라이트/다크 모드 공통으로 사용할 색상 팔레트를 정의한다.
 #[derive(Clone, Copy, Debug)]
 pub struct ThemePalette {
@@ -252,6 +280,42 @@ impl Theme {
             text_primary: palette.fg_text_primary,
             text_secondary: palette.fg_text_secondary,
             handle_fill: palette.builder_handle,
+        }
+    }
+
+    /// Step 시각 스타일을 반환한다.
+    pub fn step_visual(&self, kind: StepVisualKind) -> StepVisualStyle {
+        match kind {
+            StepVisualKind::Sql => StepVisualStyle {
+                icon: "🧮",
+                label: "SQL",
+                color: self.palette.accent_primary,
+            },
+            StepVisualKind::SqlFile => StepVisualStyle {
+                icon: "📄",
+                label: "SQL 파일",
+                color: Color32::from_rgb(0, 150, 136),
+            },
+            StepVisualKind::SqlLoader => StepVisualStyle {
+                icon: "📦",
+                label: "SQL*Loader",
+                color: Color32::from_rgb(121, 85, 72),
+            },
+            StepVisualKind::Shell => StepVisualStyle {
+                icon: "🐚",
+                label: "Shell",
+                color: Color32::from_rgb(63, 81, 181),
+            },
+            StepVisualKind::Extract => StepVisualStyle {
+                icon: "🧪",
+                label: "Extract",
+                color: Color32::from_rgb(156, 39, 176),
+            },
+            StepVisualKind::Loop => StepVisualStyle {
+                icon: "🔁",
+                label: "Loop",
+                color: Color32::from_rgb(233, 30, 99),
+            },
         }
     }
 }

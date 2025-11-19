@@ -1,44 +1,97 @@
-use super::super::events::EngineEvent;
-use crate::scenario::{ConfirmDefault, Step, StepConfirmConfig};
+use super::super::events::{ConfirmPhase, EngineEvent};
+use crate::engine::ConfirmBridge;
+use crate::scenario::{ConfirmDefault, Step, StepConfirmConfig, StepKind};
+use anyhow::Result;
 use tokio::sync::mpsc::UnboundedSender;
 
-/// Confirm 단계를 구분하기 위한 열거형이다.
-pub(super) enum ConfirmPhase {
-    /// 실행 전 확인 단계.
-    Before,
-    /// 실행 후 확인 단계.
-    After,
-}
-
-/// 컨펌 설정을 기반으로 기본 응답을 평가한다.
-pub(super) fn evaluate_confirm(
+/// 컨펌 설정을 기반으로 실제 UI 상호작용을 수행한다.
+pub(super) async fn evaluate_confirm(
     step: &Step,
-    log_step_id: &str,
     confirm: &StepConfirmConfig,
     phase: ConfirmPhase,
     sender: &UnboundedSender<EngineEvent>,
-) -> bool {
+    bridge: Option<ConfirmBridge>,
+) -> Result<bool> {
     let (enabled, message) = match phase {
-        ConfirmPhase::Before => (confirm.before, confirm.message_before.as_deref()),
-        ConfirmPhase::After => (confirm.after, confirm.message_after.as_deref()),
+        ConfirmPhase::Before => (confirm.before, confirm.message_before.clone()),
+        ConfirmPhase::After => (confirm.after, confirm.message_after.clone()),
     };
     if !enabled {
-        return true;
+        return Ok(true);
     }
-    let default_text = match confirm.default_answer {
-        ConfirmDefault::Yes => "YES",
-        ConfirmDefault::No => "NO",
-    };
-    let phase_text = match phase {
-        ConfirmPhase::Before => "실행 전",
-        ConfirmPhase::After => "실행 후",
-    };
-    let msg = message
-        .map(|m| m.to_string())
-        .unwrap_or_else(|| format!("{phase_text} 확인이 필요합니다."));
-    let _ = sender.send(EngineEvent::StepLog {
-        step_id: log_step_id.to_string(),
-        line: format!("[Confirm:{}] {msg} (기본응답: {default_text})", step.id),
-    });
-    matches!(confirm.default_answer, ConfirmDefault::Yes)
+
+    if let Some(bridge) = bridge {
+        let (request_id, rx) = bridge.register();
+        let event = EngineEvent::RequestConfirm {
+            request_id,
+            step_id: step.id.clone(),
+            step_name: step.name.clone(),
+            step_kind: step_kind_label(&step.kind),
+            summary: summarize_step(step),
+            message,
+            default_answer: confirm.default_answer.clone(),
+            phase,
+        };
+        let _ = sender.send(event);
+        match rx.await {
+            Ok(answer) => {
+                let _ = sender.send(EngineEvent::ConfirmResponse {
+                    request_id,
+                    step_id: step.id.clone(),
+                    accepted: answer,
+                });
+                Ok(answer)
+            }
+            Err(_) => {
+                bridge.cancel(request_id);
+                Ok(matches!(confirm.default_answer, ConfirmDefault::Yes))
+            }
+        }
+    } else {
+        Ok(matches!(confirm.default_answer, ConfirmDefault::Yes))
+    }
+}
+
+/// StepKind를 사용자 친화적인 문자열로 변환한다.
+fn step_kind_label(kind: &StepKind) -> String {
+    match kind {
+        StepKind::Sql { .. } => "sql",
+        StepKind::SqlFile { .. } => "sql_file",
+        StepKind::SqlLoaderPar { .. } => "sql_loader_par",
+        StepKind::Shell { .. } => "shell",
+        StepKind::Extract { .. } => "extract",
+        StepKind::Loop { .. } => "loop",
+    }
+    .into()
+}
+
+/// Step 내용을 간단히 요약한다.
+fn summarize_step(step: &Step) -> Option<String> {
+    match &step.kind {
+        StepKind::Sql { sql, .. } => Some(trim_lines(sql, 4)),
+        StepKind::SqlFile { path, .. } => Some(format!("파일: {}", path.display())),
+        StepKind::SqlLoaderPar { config } => {
+            Some(format!("control: {}", config.control_file.display()))
+        }
+        StepKind::Shell { config } => Some(trim_lines(&config.script, 4)),
+        StepKind::Extract { config } => Some(format!(
+            "파일: {} / 그룹: {} / 변수: {}",
+            config.file_path, config.group, config.var_name
+        )),
+        StepKind::Loop { config } => Some(format!(
+            "Loop {} → {} ({} steps)",
+            config.for_each_glob,
+            config.as_var,
+            config.steps.len()
+        )),
+    }
+}
+
+/// 여러 줄 문자열을 앞부분만 남기고 정리한다.
+fn trim_lines(text: &str, max_lines: usize) -> String {
+    let mut lines: Vec<&str> = text.lines().take(max_lines).collect();
+    if text.lines().count() > max_lines {
+        lines.push("...");
+    }
+    lines.join("\n")
 }

@@ -1,6 +1,7 @@
 use super::context::SharedExecutionContext;
 use super::events::EngineEvent;
 use super::resources::EngineHandles;
+use crate::engine::ConfirmBridge;
 use crate::scenario::{Step, StepKind};
 use std::sync::Arc;
 use std::time::Duration;
@@ -40,13 +41,28 @@ pub(super) async fn run_single_step(
     ctx: SharedExecutionContext,
     sender: UnboundedSender<EngineEvent>,
     cancel: CancellationToken,
+    confirm_bridge: Option<ConfirmBridge>,
 ) -> StepRunResult {
     if let Some(confirm) = &step.confirm {
-        if !evaluate_confirm(&step, &step.id, confirm, ConfirmPhase::Before, &sender) {
-            return StepRunResult::Failed(format!(
-                "사전 컨펌에서 Step '{}' 실행이 거부되었습니다.",
-                step.name
-            ));
+        match evaluate_confirm(
+            &step,
+            confirm,
+            ConfirmPhase::Before,
+            &sender,
+            confirm_bridge.clone(),
+        )
+        .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                return StepRunResult::Failed(format!(
+                    "사전 컨펌에서 Step '{}' 실행이 거부되었습니다.",
+                    step.name
+                ));
+            }
+            Err(err) => {
+                return StepRunResult::Failed(format!("컨펌 처리 오류: {err}"));
+            }
         }
     }
     let timeout_duration = Duration::from_secs(step.timeout_sec.max(1));
@@ -64,16 +80,31 @@ pub(super) async fn run_single_step(
             ctx.clone(),
             sender.clone(),
             cancel.clone(),
+            confirm_bridge.clone(),
         );
         let result = tokio::time::timeout(timeout_duration, exec_future).await;
         match result {
             Ok(Ok(())) => {
                 if let Some(confirm) = &step.confirm {
-                    if !evaluate_confirm(&step, &step.id, confirm, ConfirmPhase::After, &sender) {
-                        return StepRunResult::Failed(format!(
-                            "사후 컨펌에서 Step '{}' 실행이 거부되었습니다.",
-                            step.name
-                        ));
+                    match evaluate_confirm(
+                        &step,
+                        confirm,
+                        ConfirmPhase::After,
+                        &sender,
+                        confirm_bridge.clone(),
+                    )
+                    .await
+                    {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            return StepRunResult::Failed(format!(
+                                "사후 컨펌에서 Step '{}' 실행이 거부되었습니다.",
+                                step.name
+                            ));
+                        }
+                        Err(err) => {
+                            return StepRunResult::Failed(format!("컨펌 처리 오류: {err}"));
+                        }
                     }
                 }
                 return StepRunResult::Success;
@@ -112,6 +143,7 @@ async fn execute_step_kind(
     ctx: SharedExecutionContext,
     sender: UnboundedSender<EngineEvent>,
     cancel: CancellationToken,
+    confirm_bridge: Option<ConfirmBridge>,
 ) -> anyhow::Result<()> {
     match &step.kind {
         StepKind::Sql { sql, target_db } => {
@@ -147,11 +179,20 @@ async fn execute_step_kind(
             )
             .await?;
         }
-        StepKind::ExtractVarFromFile { config } => {
+        StepKind::Extract { config } => {
             execute_extract_step(config, ctx, log_step_id, &sender).await?;
         }
         StepKind::Loop { config } => {
-            execute_loop_step(config, log_step_id, handles, ctx, sender, cancel).await?;
+            execute_loop_step(
+                config,
+                log_step_id,
+                handles,
+                ctx,
+                sender,
+                cancel,
+                confirm_bridge,
+            )
+            .await?;
         }
     }
     Ok(())
