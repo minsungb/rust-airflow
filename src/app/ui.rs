@@ -3,7 +3,7 @@ use crate::engine::StepStatus;
 use eframe::egui::{self, RichText};
 
 use super::state::{AppTab, BatchOrchestratorApp};
-use super::widgets::{solid_section_header, PrimaryButton, StepCard};
+use super::widgets::{PrimaryButton, StepCard, solid_section_header};
 
 impl BatchOrchestratorApp {
     /// 좌측 Step 리스트 패널을 그린다.

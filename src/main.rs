@@ -1,9 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod editor;
 mod engine;
 mod executor;
-mod editor;
 mod scenario;
 mod theme;
 

@@ -1,7 +1,7 @@
-use crate::editor::{editor_state_to_scenario, scenario_to_editor_state, ScenarioEditorState};
-use crate::engine::{run_scenario, EngineEvent, StepRuntimeState, StepStatus};
+use crate::editor::{ScenarioEditorState, editor_state_to_scenario, scenario_to_editor_state};
+use crate::engine::{EngineEvent, StepRuntimeState, StepStatus, run_scenario};
 use crate::executor::{DummyExecutor, SharedExecutor};
-use crate::scenario::{load_scenario_from_file, Scenario};
+use crate::scenario::{Scenario, load_scenario_from_file};
 use crate::theme::Theme;
 use eframe::egui;
 use std::collections::HashMap;
