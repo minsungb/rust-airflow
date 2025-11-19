@@ -1,6 +1,6 @@
-use super::model::{EditorStepNode, EditorStepConfig, ScenarioEditorState, StepKind};
+use super::model::{EditorStepConfig, EditorStepNode, ScenarioEditorState, StepKind};
 use crate::scenario::{ConfirmDefault, ExtractVarFromFileConfig, LoopIterationFailure};
-use crate::theme::{BuilderColors, StepVisualKind, Theme, ThemePalette};
+use crate::theme::{BuilderColors, StepVisualKind, Theme, ThemeDecorations, ThemePalette};
 use eframe::egui;
 use eframe::epaint::{CubicBezierShape, Stroke};
 use std::collections::HashMap;
@@ -155,7 +155,14 @@ impl<'a> ScenarioBuilderUi<'a> {
                     Self::render_confirm_section(ui, &mut selected.confirm, &mut mark_dirty);
                     if selected.kind == StepKind::Loop {
                         let palette = *self.theme.palette();
-                        Self::render_loop_drawer(ui.ctx(), selected, &mut mark_dirty, palette);
+                        let decorations = *self.theme.decorations();
+                        Self::render_loop_section(
+                            ui,
+                            selected,
+                            &mut mark_dirty,
+                            palette,
+                            decorations,
+                        );
                     }
                     // ---- 여기까지 selected에 대한 편집만 수행 (self.state 다른 메서드 호출 X) ----
                 } else {
@@ -272,9 +279,7 @@ impl<'a> ScenarioBuilderUi<'a> {
             EditorStepConfig::Extract { config } => {
                 Self::render_extract(ui, config, mark_dirty);
             }
-            EditorStepConfig::Loop { .. } => {
-                ui.label("Loop 세부 설정은 우측 Drawer에서 편집하세요.");
-            }
+            EditorStepConfig::Loop { .. } => {}
         }
     }
 
@@ -365,123 +370,123 @@ impl<'a> ScenarioBuilderUi<'a> {
         }
     }
 
-    /// Loop 전용 Drawer를 표시한다.
-    fn render_loop_drawer(
-        ctx: &egui::Context,
+    /// Loop 전용 설정 섹션을 그려 Step 설정과 겹치지 않도록 배치한다.
+    fn render_loop_section(
+        ui: &mut egui::Ui,
         node: &mut EditorStepNode,
         mark_dirty: &mut bool,
-        palette: ThemePalette
+        palette: ThemePalette,
+        decorations: ThemeDecorations,
     ) {
         let EditorStepConfig::Loop { config } = &mut node.config else {
             return;
         };
-        egui::Area::new(egui::Id::new(format!("loop_drawer_{}", node.id)))
-            .order(egui::Order::Foreground)
-            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-20.0, 60.0))
-            .show(ctx, |ui| {
-                egui::Frame::none()
-                    .fill(palette.bg_panel)
-                    .stroke(egui::Stroke::new(1.0, palette.border_soft))
-                    .rounding(egui::Rounding::same(6.0))
-                    .inner_margin(egui::Margin::symmetric(16.0, 12.0))
+        ui.add_space(12.0);
+        egui::Frame::none()
+            .fill(palette.bg_panel)
+            .stroke(egui::Stroke::new(1.0, palette.border_soft))
+            .rounding(egui::Rounding::same((decorations.card_rounding).max(6.0)))
+            .inner_margin(egui::Margin::symmetric(16.0, 12.0))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.heading("Loop 설정");
+                ui.add_space(6.0);
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.set_width(360.0);
-                        ui.heading("Loop 설정");
-                        egui::ScrollArea::vertical()
-                        .show(ui, |ui| {
-                            ui.label("for_each_glob");
-                            if ui.text_edit_singleline(&mut config.for_each_glob).changed() {
-                                *mark_dirty = true;
-                            }
-                            ui.label("as 변수명");
-                            if ui.text_edit_singleline(&mut config.as_var).changed() {
-                                *mark_dirty = true;
-                            }
-                            egui::ComboBox::from_label("실패 시 동작")
-                                .selected_text(match config.on_iteration_failure {
-                                    LoopIterationFailure::StopAll => "Stop All",
-                                    LoopIterationFailure::Continue => "Continue",
-                                })
-                                .show_ui(ui, |ui| {
-                                    if ui
-                                        .selectable_label(
-                                            matches!(
-                                                config.on_iteration_failure,
-                                                LoopIterationFailure::StopAll
-                                            ),
-                                            "Stop All",
-                                        )
-                                        .clicked()
-                                    {
-                                        config.on_iteration_failure = LoopIterationFailure::StopAll;
+                        ui.label("for_each_glob");
+                        if ui.text_edit_singleline(&mut config.for_each_glob).changed() {
+                            *mark_dirty = true;
+                        }
+                        ui.label("as 변수명");
+                        if ui.text_edit_singleline(&mut config.as_var).changed() {
+                            *mark_dirty = true;
+                        }
+                        egui::ComboBox::from_label("실패 시 동작")
+                            .selected_text(match config.on_iteration_failure {
+                                LoopIterationFailure::StopAll => "Stop All",
+                                LoopIterationFailure::Continue => "Continue",
+                            })
+                            .show_ui(ui, |ui| {
+                                if ui
+                                    .selectable_label(
+                                        matches!(
+                                            config.on_iteration_failure,
+                                            LoopIterationFailure::StopAll
+                                        ),
+                                        "Stop All",
+                                    )
+                                    .clicked()
+                                {
+                                    config.on_iteration_failure = LoopIterationFailure::StopAll;
+                                    *mark_dirty = true;
+                                }
+                                if ui
+                                    .selectable_label(
+                                        matches!(
+                                            config.on_iteration_failure,
+                                            LoopIterationFailure::Continue
+                                        ),
+                                        "Continue",
+                                    )
+                                    .clicked()
+                                {
+                                    config.on_iteration_failure = LoopIterationFailure::Continue;
+                                    *mark_dirty = true;
+                                }
+                            });
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            ui.label("하위 Step");
+                            ui.menu_button("추가", |ui| {
+                                for (label, kind) in [
+                                    ("SQL", StepKind::Sql),
+                                    ("SQL 파일", StepKind::SqlFile),
+                                    ("SQL*Loader", StepKind::SqlLoaderPar),
+                                    ("Shell", StepKind::Shell),
+                                    ("Extract", StepKind::Extract),
+                                    ("Loop", StepKind::Loop),
+                                ] {
+                                    if ui.button(label).clicked() {
+                                        let new_id = config.generate_child_id();
+                                        let mut child = EditorStepNode::new(
+                                            new_id.clone(),
+                                            format!("Loop Step {new_id}"),
+                                            kind,
+                                        );
+                                        child.position = egui::pos2(20.0, 20.0);
+                                        config.nodes.push(child);
+                                        config.selected_node_id = Some(new_id);
                                         *mark_dirty = true;
-                                    }
-                                    if ui
-                                        .selectable_label(
-                                            matches!(
-                                                config.on_iteration_failure,
-                                                LoopIterationFailure::Continue
-                                            ),
-                                            "Continue",
-                                        )
-                                        .clicked()
-                                    {
-                                        config.on_iteration_failure = LoopIterationFailure::Continue;
-                                        *mark_dirty = true;
-                                    }
-                                });
-                            ui.separator();
-                            ui.horizontal(|ui| {
-                                ui.label("하위 Step");
-                                ui.menu_button("추가", |ui| {
-                                    for (label, kind) in [
-                                        ("SQL", StepKind::Sql),
-                                        ("SQL 파일", StepKind::SqlFile),
-                                        ("SQL*Loader", StepKind::SqlLoaderPar),
-                                        ("Shell", StepKind::Shell),
-                                        ("Extract", StepKind::Extract),
-                                        ("Loop", StepKind::Loop),
-                                    ] {
-                                        if ui.button(label).clicked() {
-                                            let new_id = config.generate_child_id();
-                                            let mut child = EditorStepNode::new(
-                                                new_id.clone(),
-                                                format!("Loop Step {new_id}"),
-                                                kind,
-                                            );
-                                            child.position = egui::pos2(20.0, 20.0);
-                                            config.nodes.push(child);
-                                            config.selected_node_id = Some(new_id);
-                                            *mark_dirty = true;
-                                            ui.close_menu();
-                                        }
-                                    }
-                                });
-                                if let Some(selected_id) = config.selected_node_id.clone() {
-                                    if ui.button("선택 Step 삭제").clicked() {
-                                        config.remove_node(&selected_id);
-                                        *mark_dirty = true;
+                                        ui.close_menu();
                                     }
                                 }
                             });
-                            egui::ScrollArea::vertical()
-                                .max_height(160.0)
-                                .show(ui, |ui| {
-                                    for child in &config.nodes {
-                                        let selected = config.selected_node_id.as_deref()
-                                            == Some(child.id.as_str());
-                                        if ui
-                                            .selectable_label(
-                                                selected,
-                                                format!("{} ({:?})", child.name, child.kind),
-                                            )
-                                            .clicked()
-                                        {
-                                            config.selected_node_id = Some(child.id.clone());
-                                        }
-                                    }
-                                });
                             if let Some(selected_id) = config.selected_node_id.clone() {
+                                if ui.button("선택 Step 삭제").clicked() {
+                                    config.remove_node(&selected_id);
+                                    *mark_dirty = true;
+                                }
+                            }
+                        });
+                        egui::ScrollArea::vertical()
+                            .max_height(160.0)
+                            .show(ui, |ui| {
+                                for child in &config.nodes {
+                                    let selected = config.selected_node_id.as_deref()
+                                        == Some(child.id.as_str());
+                                    if ui
+                                        .selectable_label(
+                                            selected,
+                                            format!("{} ({:?})", child.name, child.kind),
+                                        )
+                                        .clicked()
+                                    {
+                                        config.selected_node_id = Some(child.id.clone());
+                                    }
+                                }
+                            });
+                        if let Some(selected_id) = config.selected_node_id.clone() {
                             // 1) 먼저 불변 빌림으로 deps / options를 계산
                             let deps = config.dependencies_of(&selected_id);
                             let mut options: Vec<String> = config
@@ -508,7 +513,10 @@ impl<'a> ScenarioBuilderUi<'a> {
                                     *mark_dirty = true;
                                 }
 
-                                if ui.checkbox(&mut child.allow_parallel, "병렬 허용").changed() {
+                                if ui
+                                    .checkbox(&mut child.allow_parallel, "병렬 허용")
+                                    .changed()
+                                {
                                     *mark_dirty = true;
                                 }
 
@@ -579,7 +587,6 @@ impl<'a> ScenarioBuilderUi<'a> {
                             }
                         }
                     });
-                });
             });
     }
 
