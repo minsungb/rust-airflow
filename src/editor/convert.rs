@@ -12,7 +12,7 @@ pub fn scenario_to_editor_state(scenario: &Scenario) -> Result<ScenarioEditorSta
     let mut db_entries: Vec<_> = scenario.db.iter().collect();
     db_entries.sort_by(|a, b| a.0.cmp(b.0));
     for (key, config) in db_entries {
-        match config.kind {
+        match &config.kind {
             DbKind::Oracle | DbKind::Postgres => {
                 state.db_connections.push(DbConnectionEditor {
                     key: key.clone(),

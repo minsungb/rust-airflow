@@ -101,13 +101,13 @@ impl<'a> ScenarioBuilderUi<'a> {
         let mut mark_dirty = false;
         let palette = *self.get_theme().palette();
         let decorations = *self.get_theme().decorations();
+        let state = self.get_state_mut();
 
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_width(320.0);
                 let mut selected_runtime_id: Option<String> = None;
-                let state = self.get_state_mut();
                 Self::render_db_section(ui, state, &mut mark_dirty, palette, decorations);
                 ui.separator();
                 ui.heading("⚙️ Step 속성");
@@ -194,18 +194,17 @@ impl<'a> ScenarioBuilderUi<'a> {
                     ui.separator();
                     ui.label("의존성");
 
-                    if !self.get_state().nodes.is_empty() {
+                    if !state.nodes.is_empty() {
                         egui::ScrollArea::vertical()
                             .max_height(120.0)
                             .show(ui, |ui| {
-                                let deps = self.get_state().dependencies_of(&selected_id);
+                                let deps = state.dependencies_of(&selected_id);
                                 for dep in deps {
                                     let dep_id = dep.clone();
                                     ui.horizontal(|ui| {
                                         ui.label(&dep_id);
                                         if ui.button("삭제").clicked() {
-                                            self.get_state_mut()
-                                                .remove_connection(&dep_id, &selected_id);
+                                            state.remove_connection(&dep_id, &selected_id);
                                             mark_dirty = true;
                                         }
                                     });
@@ -215,8 +214,7 @@ impl<'a> ScenarioBuilderUi<'a> {
 
                     ui.add_space(6.0);
 
-                    let mut options: Vec<String> = self
-                        .get_state()
+                    let mut options: Vec<String> = state
                         .nodes
                         .iter()
                         .filter(|node| node.id != selected_id)
@@ -242,7 +240,7 @@ impl<'a> ScenarioBuilderUi<'a> {
                     }
                 }
             });
-        self.get_state_mut().dirty = mark_dirty;
+        state.dirty = mark_dirty;
     }
 
     /// Step 구성 UI를 노출한다.
