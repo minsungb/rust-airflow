@@ -10,4 +10,13 @@ pub enum EditorError {
     /// 순환 의존성이 감지된 경우이다.
     #[error("순환 의존성이 감지되었습니다. 연결 구성을 확인하세요.")]
     CyclicDependency,
+    /// 지원하지 않는 DB 종류가 사용된 경우이다.
+    #[error("지원하지 않는 DB 종류입니다: {kind} (키: {key})")]
+    UnsupportedDbKind { key: String, kind: String },
+    /// DB 키 이름이 비어 있는 경우이다.
+    #[error("DB 키 이름이 비어 있습니다.")]
+    EmptyDbKey,
+    /// DB 키가 중복된 경우이다.
+    #[error("DB 키 이름이 중복되었습니다: {0}")]
+    DuplicateDbKey(String),
 }

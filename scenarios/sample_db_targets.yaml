@@ -1,0 +1,30 @@
+name: "sample_db_targets"
+db:
+  default:
+    kind: oracle
+    dsn: "ORCLPDB1"
+    user: "APP_USER"
+    password: "secret"
+  warehouse:
+    kind: postgres
+    dsn: "postgres://pguser:pgpass@host:5432/warehouse"
+    user: "pguser"
+    password: "pgpass"
+steps:
+  - id: "sql_default"
+    name: "Oracle 기본 DB 점검"
+    kind: sql
+    sql: "select sysdate from dual"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: []
+  - id: "sql_pg_file"
+    name: "웨어하우스 적재"
+    kind: sql_file
+    sql_file: "sql/01_extract_year.sql"
+    target_db: "warehouse"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 120
+    depends_on: ["sql_default"]

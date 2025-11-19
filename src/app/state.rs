@@ -242,9 +242,20 @@ impl BatchOrchestratorApp {
             self.step_logs.insert(step.id.clone(), Vec::new());
         }
         self.selected_step = scenario.steps.first().map(|s| s.id.clone());
-        self.editor_state = scenario_to_editor_state(&scenario);
-        self.editor_state.current_file = Some(path.clone());
-        self.editor_state.dirty = false;
+        match scenario_to_editor_state(&scenario) {
+            Ok(mut editor_state) => {
+                editor_state.current_file = Some(path.clone());
+                editor_state.dirty = false;
+                self.editor_state = editor_state;
+                self.editor_error = None;
+            }
+            Err(err) => {
+                self.editor_state = ScenarioEditorState::new();
+                self.editor_state.current_file = Some(path.clone());
+                self.editor_state.dirty = false;
+                self.editor_error = Some(err.to_string());
+            }
+        }
         self.scenario = Some(scenario);
         self.scenario_path = Some(path);
         self.last_error = None;
@@ -317,7 +328,6 @@ impl BatchOrchestratorApp {
         match load_scenario_from_file(&path) {
             Ok(scenario) => {
                 self.apply_loaded_scenario(scenario, path);
-                self.editor_error = None;
             }
             Err(err) => {
                 self.editor_error = Some(err.to_string());

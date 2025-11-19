@@ -1,5 +1,7 @@
-use super::model::{EditorStepConfig, EditorStepNode, ScenarioEditorState, StepKind};
-use crate::scenario::{ConfirmDefault, ExtractVarFromFileConfig, LoopIterationFailure};
+use super::model::{
+    DbConnectionEditor, EditorStepConfig, EditorStepNode, ScenarioEditorState, StepKind,
+};
+use crate::scenario::{ConfirmDefault, DbKind, ExtractVarFromFileConfig, LoopIterationFailure};
 use crate::theme::{BuilderColors, StepVisualKind, Theme, ThemeDecorations, ThemePalette};
 use eframe::egui;
 use eframe::epaint::{CubicBezierShape, Stroke};
