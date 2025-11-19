@@ -1,7 +1,7 @@
 use crate::editor::{ScenarioEditorState, editor_state_to_scenario, scenario_to_editor_state};
-use crate::engine::{EngineEvent, StepRuntimeState, StepStatus, run_scenario};
+use crate::engine::{ConfirmBridge, EngineEvent, StepRuntimeState, StepStatus, run_scenario};
 use crate::executor::{DummyExecutor, SharedExecutor};
-use crate::scenario::{Scenario, load_scenario_from_file};
+use crate::scenario::{ConfirmDefault, Scenario, load_scenario_from_file};
 use crate::theme::Theme;
 use eframe::egui;
 use std::collections::HashMap;
@@ -15,6 +15,27 @@ use tokio_util::sync::CancellationToken;
 
 /// 메모리에 적재할 수 있는 최대 로그 라인 수를 정의한다.
 pub(crate) const MAX_LOG_LINES: usize = 500;
+
+/// UI에 표시할 컨펌 요청 정보를 저장한다.
+#[derive(Debug, Clone)]
+pub struct PendingConfirmRequest {
+    /// 요청 ID이다.
+    pub request_id: u64,
+    /// Step ID이다.
+    pub step_id: String,
+    /// Step 이름이다.
+    pub step_name: String,
+    /// Step 종류 문자열이다.
+    pub step_kind: String,
+    /// Step 요약 정보이다.
+    pub summary: Option<String>,
+    /// 사용자 메시지이다.
+    pub message: Option<String>,
+    /// 기본 응답이다.
+    pub default_answer: ConfirmDefault,
+    /// 컨펌 단계이다.
+    pub phase: crate::engine::ConfirmPhase,
+}
 
 /// 앱 상단 탭 종류를 정의한다.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +78,10 @@ pub struct BatchOrchestratorApp {
     pub(crate) editor_error: Option<String>,
     /// 현재 활성 탭.
     pub(crate) active_tab: AppTab,
+    /// 대기 중인 컨펌 요청 목록.
+    pub(crate) pending_confirms: Vec<PendingConfirmRequest>,
+    /// 엔진에 전달할 컨펌 브리지.
+    pub(crate) confirm_bridge: Option<ConfirmBridge>,
 }
 
 impl BatchOrchestratorApp {
@@ -81,6 +106,8 @@ impl BatchOrchestratorApp {
             editor_state: ScenarioEditorState::new(),
             editor_error: None,
             active_tab: AppTab::Run,
+            pending_confirms: Vec::new(),
+            confirm_bridge: None,
         }
     }
 
@@ -98,9 +125,46 @@ impl BatchOrchestratorApp {
                     EngineEvent::StepFinished { step_id, success } => {
                         self.mark_step_finished(&step_id, success);
                     }
+                    EngineEvent::RequestConfirm {
+                        request_id,
+                        step_id,
+                        step_name,
+                        step_kind,
+                        summary,
+                        message,
+                        default_answer,
+                        phase,
+                    } => {
+                        self.pending_confirms.push(PendingConfirmRequest {
+                            request_id,
+                            step_id,
+                            step_name,
+                            step_kind,
+                            summary,
+                            message,
+                            default_answer,
+                            phase,
+                        });
+                    }
+                    EngineEvent::ConfirmResponse {
+                        request_id,
+                        step_id,
+                        accepted,
+                    } => {
+                        self.pending_confirms
+                            .retain(|req| req.request_id != request_id);
+                        let log_line = if accepted {
+                            "컨펌 승인".to_string()
+                        } else {
+                            "컨펌 거부".to_string()
+                        };
+                        self.push_log(&step_id, log_line);
+                    }
                     EngineEvent::ScenarioFinished => {
                         self.scenario_running = false;
                         self.cancel_token = None;
+                        self.pending_confirms.clear();
+                        self.confirm_bridge = None;
                     }
                 }
             }
@@ -207,16 +271,19 @@ impl BatchOrchestratorApp {
         }
         let (tx, rx) = mpsc::unbounded_channel();
         let token = CancellationToken::new();
+        let confirm_bridge = ConfirmBridge::new();
         self.runtime.spawn(run_scenario(
             scenario.clone(),
             self.executor.clone(),
             tx,
             token.clone(),
+            Some(confirm_bridge.clone()),
         ));
         self.events_rx = Some(rx);
         self.cancel_token = Some(token);
         self.scenario_running = true;
         self.last_error = None;
+        self.confirm_bridge = Some(confirm_bridge);
     }
 
     /// 현재 실행 중인 시나리오를 중단한다.
@@ -225,6 +292,8 @@ impl BatchOrchestratorApp {
             token.cancel();
         }
         self.scenario_running = false;
+        self.pending_confirms.clear();
+        self.confirm_bridge = None;
     }
 
     /// 새 시나리오 빌더 문서를 생성한다.
@@ -328,6 +397,16 @@ impl BatchOrchestratorApp {
             completed as f32 / scenario.steps.len() as f32
         } else {
             0.0
+        }
+    }
+
+    /// 지정한 컨펌 요청에 응답한다.
+    pub(super) fn respond_confirm(&mut self, request_id: u64, accepted: bool) {
+        if let Some(bridge) = &self.confirm_bridge {
+            if bridge.respond(request_id, accepted) {
+                self.pending_confirms
+                    .retain(|req| req.request_id != request_id);
+            }
         }
     }
 }
