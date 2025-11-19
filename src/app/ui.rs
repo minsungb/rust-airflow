@@ -121,15 +121,13 @@ impl BatchOrchestratorApp {
     pub(super) fn render_run_toolbar(&mut self, ui: &mut egui::Ui) {
         let decorations = *self.theme.decorations();
         let palette = *self.theme.palette();
-        ui.set_min_height(130.0);
         ui.vertical(|ui| {
             ui.label(
                 RichText::new("✨ Rust Batch Orchestrator")
-                    .size(22.0)
+                    .size(20.0)
                     .color(palette.fg_text_primary)
                     .strong(),
             );
-            ui.add_space(6.0);
             if let Some(path) = &self.scenario_path {
                 ui.label(
                     RichText::new(format!("로드됨 · {}", path.display()))
@@ -145,6 +143,7 @@ impl BatchOrchestratorApp {
                 ui.label(RichText::new(err).color(palette.accent_error).strong());
                 ui.add_space(10.0);
             }
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = decorations.button_gap;
 
@@ -282,7 +281,7 @@ impl BatchOrchestratorApp {
             fill: palette.bg_toolbar,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
             rounding: egui::Rounding::same(decorations.toolbar_rounding),
-            inner_margin: egui::Margin::symmetric(20.0, 20.0),
+            inner_margin: decorations.card_inner_margin,
             ..Default::default()
         };
         egui::TopBottomPanel::top("run_toolbar")
@@ -309,7 +308,7 @@ impl BatchOrchestratorApp {
             fill: palette.bg_main,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
             rounding: egui::Rounding::same(decorations.container_rounding),
-            inner_margin: egui::Margin::symmetric(22.0, 18.0),
+            inner_margin: decorations.card_inner_margin,
             ..Default::default()
         };
         egui::CentralPanel::default()
@@ -375,7 +374,7 @@ impl BatchOrchestratorApp {
             fill: palette.bg_toolbar,
             stroke: egui::Stroke::new(1.0, palette.border_soft),
             rounding: egui::Rounding::same(decorations.toolbar_rounding),
-            inner_margin: egui::Margin::symmetric(16.0, 16.0),
+            inner_margin: decorations.card_inner_margin,
             ..Default::default()
         };
         egui::TopBottomPanel::top("builder_toolbar")

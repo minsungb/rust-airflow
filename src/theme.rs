@@ -50,7 +50,7 @@ impl ThemeDecorations {
             header_icon_size: 24.0,
             header_fill: Color32::from_rgb(76, 128, 255),
             header_text: Color32::from_rgb(255, 255, 255),
-            card_inner_margin: egui::Margin::symmetric(18.0, 16.0),
+            card_inner_margin: egui::Margin::symmetric(16.0, 16.0),
         }
     }
 }
