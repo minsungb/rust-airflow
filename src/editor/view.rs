@@ -2,6 +2,7 @@ use super::model::{EditorStepConfig, ScenarioEditorState, StepKind};
 use crate::theme::{BuilderColors, Theme};
 use eframe::egui;
 use std::collections::HashMap;
+use eframe::epaint::{CubicBezierShape, Stroke};
 
 /// Scenario Builder 화면 전체를 담당하는 뷰이다.
 pub struct ScenarioBuilderUi<'a> {
@@ -84,37 +85,53 @@ impl<'a> ScenarioBuilderUi<'a> {
 
     /// 우측 속성 패널을 렌더링한다.
     fn render_properties(&mut self, ui: &mut egui::Ui) {
+        let mut mark_dirty = false;
+
         ui.heading("⚙️ Step 속성");
         ui.separator();
+
+        // 이 렌더 사이클에서 최종적으로 사용될 선택된 Step의 ID를 저장할 변수
+        let mut selected_runtime_id: Option<String> = None;
+
         if let Some(selected_id) = self.state.selected_node_id.clone() {
             if let Some(selected) = self.state.node_mut(&selected_id) {
+                // 현재 선택된 노드의 id를 runtime 변수에 저장
+                selected_runtime_id = Some(selected.id.clone());
+
+                // ---- 여기부터: 선택된 노드의 속성 편집 ----
                 let mut id_buf = selected.id.clone();
                 ui.label("ID");
                 if ui.text_edit_singleline(&mut id_buf).changed() {
-                    selected.id = id_buf;
-                    self.state.dirty = true;
+                    selected.id = id_buf.clone();
+                    selected_runtime_id = Some(id_buf); // id가 바뀌면 runtime id도 갱신
+                    mark_dirty = true;
                 }
+
                 let mut name_buf = selected.name.clone();
                 ui.label("이름");
                 if ui.text_edit_singleline(&mut name_buf).changed() {
                     selected.name = name_buf;
-                    self.state.dirty = true;
+                    mark_dirty = true;
                 }
+
                 ui.label(format!("유형: {:?}", selected.kind));
+
                 if ui
                     .checkbox(&mut selected.allow_parallel, "병렬 허용")
                     .changed()
                 {
-                    self.state.dirty = true;
+                    mark_dirty = true;
                 }
+
                 let mut retry = selected.retry;
                 if ui
                     .add(egui::Slider::new(&mut retry, 0..=5).text("재시도"))
                     .changed()
                 {
                     selected.retry = retry;
-                    self.state.dirty = true;
+                    mark_dirty = true;
                 }
+
                 let mut timeout = selected.timeout_sec as i32;
                 if ui
                     .add(
@@ -125,9 +142,11 @@ impl<'a> ScenarioBuilderUi<'a> {
                     .changed()
                 {
                     selected.timeout_sec = timeout.max(1) as u64;
-                    self.state.dirty = true;
+                    mark_dirty = true;
                 }
+
                 ui.separator();
+
                 match &mut selected.config {
                     EditorStepConfig::Sql { sql, target_db } => {
                         ui.label("대상 DB");
@@ -138,11 +157,11 @@ impl<'a> ScenarioBuilderUi<'a> {
                             } else {
                                 Some(db_buf)
                             };
-                            self.state.dirty = true;
+                            mark_dirty = true;
                         }
                         ui.label("SQL");
                         if ui.text_edit_multiline(sql).changed() {
-                            self.state.dirty = true;
+                            mark_dirty = true;
                         }
                     }
                     EditorStepConfig::SqlFile { path, target_db } => {
@@ -154,100 +173,152 @@ impl<'a> ScenarioBuilderUi<'a> {
                             } else {
                                 Some(db_buf)
                             };
-                            self.state.dirty = true;
+                            mark_dirty = true;
                         }
                         ui.label("SQL 파일 경로");
                         let mut path_buf = path.display().to_string();
                         if ui.text_edit_singleline(&mut path_buf).changed() {
                             *path = std::path::PathBuf::from(path_buf);
-                            self.state.dirty = true;
+                            mark_dirty = true;
                         }
                     }
                     EditorStepConfig::SqlLoaderPar { config } => {
-                        self.render_sqlldr(ui, config);
+                        Self::render_sqlldr(ui, config, &mut mark_dirty);
                     }
                     EditorStepConfig::Shell { config } => {
-                        self.render_shell(ui, config);
+                        Self::render_shell(ui, config, &mut mark_dirty);
                     }
                 }
-                ui.separator();
-                ui.label("의존성");
-                if !self.state.nodes.is_empty() {
-                    egui::ScrollArea::vertical()
-                        .max_height(120.0)
-                        .show(ui, |ui| {
-                            let deps = self.state.dependencies_of(&selected.id);
-                            for dep in deps {
-                                ui.horizontal(|ui| {
-                                    ui.label(dep.clone());
-                                    if ui.button("삭제").clicked() {
-                                        self.state.remove_connection(&dep, &selected.id);
-                                    }
-                                });
-                            }
-                        });
-                }
-                ui.add_space(6.0);
-                let mut options: Vec<String> = self
-                    .state
-                    .nodes
-                    .iter()
-                    .filter(|node| node.id != selected.id)
-                    .map(|node| node.id.clone())
-                    .collect();
-                options.sort();
-                egui::ComboBox::from_label("의존성 추가")
-                    .selected_text("노드 선택")
-                    .show_ui(ui, |ui| {
-                        for option in &options {
-                            if ui.selectable_label(false, option).clicked() {
-                                self.state.add_connection(option, &selected.id);
-                            }
-                        }
-                    });
-                ui.separator();
-                if ui.button("이 Step 삭제").clicked() {
-                    let id = selected.id.clone();
-                    self.state.remove_node(&id);
-                }
+                // ---- 여기까지 selected에 대한 편집만 수행 (self.state 다른 메서드 호출 X) ----
             } else {
                 ui.label("선택된 Step 정보를 찾을 수 없습니다.");
             }
         } else {
             ui.label("선택된 Step이 없습니다.");
         }
+
+        // ---------- 여기부터: 의존성 / 삭제 UI (self.state 를 마음대로 써도 됨) ----------
+        if let Some(selected_id) = selected_runtime_id.clone() {
+            ui.separator();
+            ui.label("의존성");
+
+            if !self.state.nodes.is_empty() {
+                // 의존성 목록 표시
+                egui::ScrollArea::vertical()
+                    .max_height(120.0)
+                    .show(ui, |ui| {
+                        let deps = self.state.dependencies_of(&selected_id);
+                        for dep in deps {
+                            let dep_id = dep.clone();
+                            ui.horizontal(|ui| {
+                                ui.label(&dep_id);
+                                if ui.button("삭제").clicked() {
+                                    self.state.remove_connection(&dep_id, &selected_id);
+                                    mark_dirty = true;
+                                }
+                            });
+                        }
+                    });
+
+                ui.add_space(6.0);
+
+                // 의존성 추가용 옵션 목록 생성
+                let mut options: Vec<String> = self
+                    .state
+                    .nodes
+                    .iter()
+                    .filter(|node| node.id != selected_id)
+                    .map(|node| node.id.clone())
+                    .collect();
+                options.sort();
+
+                egui::ComboBox::from_label("의존성 추가")
+                    .selected_text("노드 선택")
+                    .show_ui(ui, |ui| {
+                        for option in &options {
+                            if ui.selectable_label(false, option).clicked() {
+                                self.state.add_connection(option, &selected_id);
+                                mark_dirty = true;
+                            }
+                        }
+                    });
+            }
+
+            ui.separator();
+            if ui.button("이 Step 삭제").clicked() {
+                self.state.remove_node(&selected_id);
+                mark_dirty = true;
+            }
+        }
+
+        self.state.dirty = mark_dirty;
     }
+
 
     /// SQL*Loader 속성 UI를 렌더링한다.
     fn render_sqlldr(
-        &mut self,
         ui: &mut egui::Ui,
         config: &mut crate::scenario::SqlLoaderParConfig,
+        mark_dirty: &mut bool,
     ) {
         let mut control = config.control_file.display().to_string();
         ui.label("control 파일");
         if ui.text_edit_singleline(&mut control).changed() {
             config.control_file = control.into();
-            self.state.dirty = true;
+            *mark_dirty = true;
         }
-        self.optional_path_field(ui, "data 파일", &mut config.data_file);
-        self.optional_path_field(ui, "log 파일", &mut config.log_file);
-        self.optional_path_field(ui, "bad 파일", &mut config.bad_file);
-        self.optional_path_field(ui, "discard 파일", &mut config.discard_file);
+
+        // optional_path_field도 self 없이 쓰는 버전으로 분리하는 게 베스트
+        Self::optional_path_field_ui(ui, "data 파일", &mut config.data_file, mark_dirty);
+        Self::optional_path_field_ui(ui, "log 파일", &mut config.log_file, mark_dirty);
+        Self::optional_path_field_ui(ui, "bad 파일", &mut config.bad_file, mark_dirty);
+        Self::optional_path_field_ui(ui, "discard 파일", &mut config.discard_file, mark_dirty);
+
         let mut conn = config.conn.clone().unwrap_or_default();
         ui.label("접속 문자열");
         if ui.text_edit_singleline(&mut conn).changed() {
             config.conn = if conn.is_empty() { None } else { Some(conn) };
-            self.state.dirty = true;
+            *mark_dirty = true;
+        }
+    }
+
+    // 기존 self.optional_path_field(...) 가 있었다면,
+    // 이렇게 "self 없는 버전" 헬퍼로 분리
+    fn optional_path_field_ui(
+        ui: &mut egui::Ui,
+        label: &str,
+        path: &mut Option<std::path::PathBuf>,
+        mark_dirty: &mut bool,
+    ) {
+        ui.label(label);
+
+        let mut buf = path
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+
+        if ui.text_edit_singleline(&mut buf).changed() {
+            let trimmed = buf.trim();
+            if trimmed.is_empty() {
+                *path = None;
+            } else {
+                *path = Some(std::path::PathBuf::from(trimmed));
+            }
+            *mark_dirty = true;
         }
     }
 
     /// Shell 속성 UI를 렌더링한다.
-    fn render_shell(&mut self, ui: &mut egui::Ui, config: &mut crate::scenario::ShellConfig) {
+    fn render_shell(
+        ui: &mut egui::Ui,
+        config: &mut crate::scenario::ShellConfig,
+        mark_dirty: &mut bool,
+    ) {
         ui.label("스크립트");
         if ui.text_edit_multiline(&mut config.script).changed() {
-            self.state.dirty = true;
+            *mark_dirty = true;
         }
+
         let mut program = config.shell_program.clone().unwrap_or_default();
         ui.label("셸 프로그램");
         if ui.text_edit_singleline(&mut program).changed() {
@@ -256,8 +327,9 @@ impl<'a> ScenarioBuilderUi<'a> {
             } else {
                 Some(program)
             };
-            self.state.dirty = true;
+            *mark_dirty = true;
         }
+
         let mut args = config.shell_args.join(", ");
         ui.label("인자 목록(쉼표 구분)");
         if ui.text_edit_singleline(&mut args).changed() {
@@ -266,8 +338,9 @@ impl<'a> ScenarioBuilderUi<'a> {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())
                 .collect();
-            self.state.dirty = true;
+            *mark_dirty = true;
         }
+
         let mut work_dir = config
             .working_dir
             .as_ref()
@@ -280,8 +353,9 @@ impl<'a> ScenarioBuilderUi<'a> {
             } else {
                 Some(work_dir.into())
             };
-            self.state.dirty = true;
+            *mark_dirty = true;
         }
+
         let mut run_as = config.run_as.clone().unwrap_or_default();
         ui.label("실행 사용자");
         if ui.text_edit_singleline(&mut run_as).changed() {
@@ -290,8 +364,9 @@ impl<'a> ScenarioBuilderUi<'a> {
             } else {
                 Some(run_as)
             };
-            self.state.dirty = true;
+            *mark_dirty = true;
         }
+
         ui.label("환경 변수 (KEY=VALUE 한 줄씩)");
         let mut env_text = config
             .env
@@ -301,7 +376,7 @@ impl<'a> ScenarioBuilderUi<'a> {
             .join("\n");
         if ui.text_edit_multiline(&mut env_text).changed() {
             config.env = Self::parse_env(&env_text);
-            self.state.dirty = true;
+            *mark_dirty = true;
         }
     }
 
@@ -398,20 +473,23 @@ impl<'a> ScenarioBuilderUi<'a> {
                 let end = to.position + egui::vec2(to.size.x / 2.0, 0.0);
                 let start = egui::pos2(start.x + origin.x, start.y + origin.y);
                 let end = egui::pos2(end.x + origin.x, end.y + origin.y);
-                painter.cubic_bezier(egui::CubicBezierShape::from_points_stroke(
-                    [
-                        start,
-                        start + egui::vec2(0.0, 60.0),
-                        end - egui::vec2(0.0, 60.0),
-                        end,
-                    ],
-                    false,
-                    colors.connection_stroke,
-                    egui::Stroke::new(2.0, colors.connection_stroke),
-                ));
+                painter.add(
+                    CubicBezierShape::from_points_stroke(
+                        [
+                            start,
+                            start + egui::vec2(0.0, 60.0),
+                            end - egui::vec2(0.0, 60.0),
+                            end,
+                        ],
+                        false,                        // closed
+                        egui::Color32::TRANSPARENT,   // fill 없음
+                        Stroke::new(2.0, colors.connection_stroke),
+                    ),
+                );
             }
         }
     }
+
 
     /// 개별 노드를 드로잉한다.
     fn draw_node(
