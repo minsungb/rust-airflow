@@ -62,6 +62,27 @@ pub enum ThemeVariant {
     Light,
 }
 
+/// 시나리오 빌더 전용 색상 묶음이다.
+#[derive(Clone, Copy, Debug)]
+pub struct BuilderColors {
+    /// 캔버스 배경색.
+    pub canvas_fill: Color32,
+    /// 노드 배경색.
+    pub node_fill: Color32,
+    /// 선택된 노드 배경색.
+    pub node_selected: Color32,
+    /// 노드 테두리 색상.
+    pub node_border: Color32,
+    /// 연결선 색상.
+    pub connection_stroke: Color32,
+    /// 텍스트 주 색상.
+    pub text_primary: Color32,
+    /// 텍스트 보조 색상.
+    pub text_secondary: Color32,
+    /// 핸들 색상.
+    pub handle_fill: Color32,
+}
+
 /// 라이트/다크 모드 공통으로 사용할 색상 팔레트를 정의한다.
 #[derive(Clone, Copy, Debug)]
 pub struct ThemePalette {
@@ -93,6 +114,18 @@ pub struct ThemePalette {
     pub accent_pending: Color32,
     /// 인터랙티브 아이콘 하이라이트 색상.
     pub icon_emphasis: Color32,
+    /// 빌더 캔버스 배경색.
+    pub builder_canvas: Color32,
+    /// 빌더 노드 배경색.
+    pub builder_node: Color32,
+    /// 선택된 노드 배경색.
+    pub builder_node_selected: Color32,
+    /// 빌더 연결선 색상.
+    pub builder_connection: Color32,
+    /// 빌더 노드 테두리 색상.
+    pub builder_node_border: Color32,
+    /// 빌더 핸들 색상.
+    pub builder_handle: Color32,
 }
 
 impl ThemePalette {
@@ -113,6 +146,12 @@ impl ThemePalette {
             border_soft: Color32::from_rgb(210, 210, 210),
             accent_pending: Color32::from_rgb(189, 189, 189),
             icon_emphasis: Color32::from_rgb(76, 128, 255),
+            builder_canvas: Color32::from_rgb(237, 240, 247),
+            builder_node: Color32::from_rgb(255, 255, 255),
+            builder_node_selected: Color32::from_rgb(223, 235, 255),
+            builder_connection: Color32::from_rgb(96, 125, 139),
+            builder_node_border: Color32::from_rgb(164, 177, 190),
+            builder_handle: Color32::from_rgb(76, 128, 255),
         }
     }
 }
@@ -199,6 +238,21 @@ impl Theme {
     /// 현재 테마의 종류를 반환한다.
     pub fn variant(&self) -> ThemeVariant {
         self.variant
+    }
+
+    /// 시나리오 빌더 색상을 반환한다.
+    pub fn builder_colors(&self) -> BuilderColors {
+        let palette = self.palette;
+        BuilderColors {
+            canvas_fill: palette.builder_canvas,
+            node_fill: palette.builder_node,
+            node_selected: palette.builder_node_selected,
+            node_border: palette.builder_node_border,
+            connection_stroke: palette.builder_connection,
+            text_primary: palette.fg_text_primary,
+            text_secondary: palette.fg_text_secondary,
+            handle_fill: palette.builder_handle,
+        }
     }
 }
 

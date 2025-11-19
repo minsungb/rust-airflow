@@ -58,8 +58,7 @@ impl<'a> Widget for StepCard<'a> {
         let desired_size = egui::vec2(ui.available_width(), self.height);
 
         // 여기서는 레이아웃만 확보 (Sense::hover 정도만 줘도 됨)
-        let (rect, _dummy_response) =
-            ui.allocate_exact_size(desired_size, egui::Sense::hover());
+        let (rect, _dummy_response) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
 
         if !ui.is_rect_visible(rect) {
             // 아직 화면에 안 보이면 바로 반환
@@ -126,24 +125,20 @@ impl<'a> Widget for StepCard<'a> {
                     .strong(),
             );
             ui.label(
-                RichText::new(format!("ID: {}", self.step_id))
-                    .color(palette.fg_text_secondary),
+                RichText::new(format!("ID: {}", self.step_id)).color(palette.fg_text_secondary),
             );
         });
 
-        content_ui.with_layout(
-            egui::Layout::right_to_left(egui::Align::Center),
-            |ui| {
-                if !self.status_text.is_empty() {
-                    ui.label(
-                        RichText::new(self.status_text)
-                            .size(15.0)
-                            .color(self.status_color)
-                            .strong(),
-                    );
-                }
-            },
-        );
+        content_ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if !self.status_text.is_empty() {
+                ui.label(
+                    RichText::new(self.status_text)
+                        .size(15.0)
+                        .color(self.status_color)
+                        .strong(),
+                );
+            }
+        });
 
         let id = ui.id().with(self.step_id); // 또는 with("step_card")
         let mut response = ui.interact(rect, id, egui::Sense::click());
