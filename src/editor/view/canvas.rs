@@ -48,13 +48,13 @@ impl<'a> ScenarioBuilderUi<'a> {
     }
 
     /// 연결 선을 그린다.
-    fn draw_connections(&mut self, painter: &egui::Painter, colors: BuilderColors, origin: egui::Vec2) {
-        let connections = self.get_state().connections.clone();  // 불변 참조로 먼저 사용
-        for conn in connections {
-            self.get_state_mut().select_node(Some(conn.from_id.clone()));  // 가변 참조 사용
-            self.get_state_mut().select_node(Some(conn.to_id.clone()));
-
-            // 연결을 그리는 로직을 계속 진행
+    fn draw_connections(
+        &mut self,
+        painter: &egui::Painter,
+        colors: BuilderColors,
+        origin: egui::Vec2,
+    ) {
+        for conn in &self.get_state().connections {
             if let (Some(from), Some(to)) = (
                 self.get_state().node(&conn.from_id),
                 self.get_state().node(&conn.to_id),
@@ -110,7 +110,9 @@ impl<'a> ScenarioBuilderUi<'a> {
             egui::FontId::proportional(12.0),
             colors.text_secondary,
         );
-        let visual = self.get_theme().step_visual(Self::visual_kind_for(node.kind));
+        let visual = self
+            .get_theme()
+            .step_visual(Self::visual_kind_for(node.kind));
         let mut subtitle = visual.label.to_string();
         if let EditorStepConfig::Extract { config } = &node.config {
             if config.var_name.is_empty() {

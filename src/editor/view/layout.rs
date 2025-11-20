@@ -9,27 +9,32 @@ pub struct ScenarioBuilderUi<'a> {
 }
 
 impl<'a> ScenarioBuilderUi<'a> {
-    pub fn get_state(&self) -> &ScenarioEditorState {  // 수정: ScenarioEditorState 반환
+    /// 에디터 상태에 대한 불변 참조를 반환한다.
+    pub fn get_state(&self) -> &ScenarioEditorState {
         &self.state
     }
 
-    pub fn get_state_mut(&mut self) -> &mut ScenarioEditorState {  // 수정: ScenarioEditorState 반환
+    /// 에디터 상태에 대한 가변 참조를 반환한다.
+    pub fn get_state_mut(&mut self) -> &mut ScenarioEditorState {
         &mut self.state
     }
 
+    /// 전달된 ID를 선택 상태로 설정하고 동일한 ID를 반환한다.
     pub fn select_node(&mut self, id: &Option<String>) -> Option<String> {
-        self.state.select_node(id.clone());  // 클로닝해서 사용
-        id.clone()  // id를 클론하여 반환
+        self.state.select_node(id.clone());
+        id.clone()
     }
 
+    /// 노드 선택 상태를 초기화한다.
     pub fn clear_selection(&mut self) {
         self.state.select_node(None);
     }
 
+    /// 현재 테마에 대한 참조를 반환한다.
     pub fn get_theme(&self) -> &Theme {
         self.theme
     }
-    
+
     /// 뷰 인스턴스를 생성한다.
     pub fn new(theme: &'a Theme, state: &'a mut ScenarioEditorState) -> Self {
         Self { theme, state }
