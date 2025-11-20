@@ -31,9 +31,10 @@ steps:
     kind: shell
     shell:
       script: |
-        if [ "${confirm_decision}" = "No" ]; then
-          echo "사용자가 중단을 선택했습니다."
-          exit 1
+        echo "CONFIRM_CONFIRM_RUN value: '${CONFIRM_CONFIRM_RUN}'"
+        if [ "${CONFIRM_CONFIRM_RUN}" = "No" ]; then
+            echo "사용자가 중단을 선택했습니다."
+            exit 1
         fi
         echo "사용자가 승인했으므로 작업을 진행합니다."
     allow_parallel: false

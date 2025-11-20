@@ -16,7 +16,7 @@ pub(super) async fn evaluate_confirm(
     ctx: SharedExecutionContext,
     sender: &UnboundedSender<EngineEvent>,
     bridge: Option<ConfirmBridge>,
-) -> Result<bool> {
+) -> Result<bool> {  // Result<bool>을 anyhow::Result<bool>로 변경
     let (enabled, message) = match phase {
         ConfirmPhase::Before => (confirm.before, confirm.message_before.clone()),
         ConfirmPhase::After => (confirm.after, confirm.message_after.clone()),
@@ -47,7 +47,7 @@ pub(super) async fn evaluate_confirm(
                     step_id: step.id.clone(),
                     accepted: answer,
                 });
-                Ok(answer)
+                Ok::<bool, anyhow::Error>(answer)
             }
             Err(_) => {
                 bridge.cancel(request_id);
