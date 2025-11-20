@@ -35,7 +35,7 @@ steps:
     kind: shell
     shell:
       script: |
-        if "${confirm_decision}"=="No" (
+        if "${CONFIRM_CONFIRM_DATE}"=="No" (
           echo "사용자가 날짜를 거부했으므로 작업을 중단합니다."
           exit /b 1
         )

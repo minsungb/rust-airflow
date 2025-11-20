@@ -1,17 +1,22 @@
+use super::super::context::SharedExecutionContext;
 use super::super::events::{ConfirmPhase, EngineEvent};
 use crate::engine::ConfirmBridge;
 use crate::scenario::{ConfirmDefault, Step, StepConfirmConfig, StepKind};
 use anyhow::Result;
 use tokio::sync::mpsc::UnboundedSender;
 
-/// 컨펌 설정을 기반으로 실제 UI 상호작용을 수행한다.
+/// 컨펌 설정을 기반으로 실제 UI 상호작용을 수행하고 결과를 컨텍스트에 저장한다.
+///
+/// 수락 여부는 `CONFIRM_<STEP_ID>` 형태(대문자)로 `ExecutionContext`에 "Yes" 또는
+/// "No" 값으로 기록되어 이후 Step에서 플레이스홀더로 활용할 수 있다.
 pub(super) async fn evaluate_confirm(
     step: &Step,
     confirm: &StepConfirmConfig,
     phase: ConfirmPhase,
+    ctx: SharedExecutionContext,
     sender: &UnboundedSender<EngineEvent>,
     bridge: Option<ConfirmBridge>,
-) -> Result<bool> {
+) -> Result<bool> {  // Result<bool>을 anyhow::Result<bool>로 변경
     let (enabled, message) = match phase {
         ConfirmPhase::Before => (confirm.before, confirm.message_before.clone()),
         ConfirmPhase::After => (confirm.after, confirm.message_after.clone()),
@@ -20,7 +25,8 @@ pub(super) async fn evaluate_confirm(
         return Ok(true);
     }
 
-    if let Some(bridge) = bridge {
+    let mut accepted = matches!(confirm.default_answer, ConfirmDefault::Yes);
+    let answered = if let Some(bridge) = bridge {
         let (request_id, rx) = bridge.register();
         let event = EngineEvent::RequestConfirm {
             request_id,
@@ -35,12 +41,13 @@ pub(super) async fn evaluate_confirm(
         let _ = sender.send(event);
         match rx.await {
             Ok(answer) => {
+                accepted = answer;
                 let _ = sender.send(EngineEvent::ConfirmResponse {
                     request_id,
                     step_id: step.id.clone(),
                     accepted: answer,
                 });
-                Ok(answer)
+                Ok::<bool, anyhow::Error>(answer)
             }
             Err(_) => {
                 bridge.cancel(request_id);
@@ -49,7 +56,12 @@ pub(super) async fn evaluate_confirm(
         }
     } else {
         Ok(matches!(confirm.default_answer, ConfirmDefault::Yes))
-    }
+    }?;
+
+    let mut guard = ctx.write().await;
+    let key = format!("CONFIRM_{}", step.id.to_uppercase());
+    guard.set_var(&key, if accepted { "Yes" } else { "No" });
+    Ok(answered)
 }
 
 /// StepKind를 사용자 친화적인 문자열로 변환한다.

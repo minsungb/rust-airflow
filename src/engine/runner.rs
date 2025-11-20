@@ -77,15 +77,8 @@ pub async fn run_scenario(
             let tx = sender.clone();
             let token = cancel.clone();
             running_tasks.push(tokio::spawn(async move {
-                let outcome = run_single_step(
-                    step,
-                    exec_handles,
-                    exec_ctx,
-                    tx,
-                    token,
-                    confirm_bridge,
-                )
-                .await;
+                let outcome =
+                    run_single_step(step, exec_handles, exec_ctx, tx, token, confirm_bridge).await;
                 (step_id, outcome)
             }));
         }
