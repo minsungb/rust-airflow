@@ -1,10 +1,8 @@
 use super::super::context::SharedExecutionContext;
 use super::super::events::EngineEvent;
-use futures::StreamExt;
 use std::path::PathBuf;
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::mpsc::UnboundedSender;
-use tokio_util::codec::{FramedRead, LinesCodec};
 
 /// Step 로그를 전송한다.
 pub(super) fn log_step(sender: &UnboundedSender<EngineEvent>, step_id: &str, line: &str) {
@@ -43,6 +41,12 @@ pub(super) async fn expand_option_path(
 }
 
 /// 프로세스 파이프를 읽어 로그 이벤트로 중계한다.
+///
+/// # 인자
+/// - `reader`: STDOUT/STDERR 스트림을 비동기로 읽을 리더
+/// - `sender`: 로그 이벤트를 전달할 채널 송신자
+/// - `step_id`: 로그를 구분하기 위한 스텝 식별자
+/// - `tag`: STDOUT/STDERR 태그 문자열
 pub(super) async fn pipe_forwarder<R>(
     reader: R,
     sender: UnboundedSender<EngineEvent>,
@@ -51,10 +55,23 @@ pub(super) async fn pipe_forwarder<R>(
 ) where
     R: AsyncRead + Unpin + Send + 'static,
 {
-    let mut lines = FramedRead::new(reader, LinesCodec::new());
-    while let Some(line_result) = lines.next().await {
-        match line_result {
-            Ok(line) => {
+    let mut reader = BufReader::new(reader);
+    let mut buffer = Vec::new();
+
+    loop {
+        buffer.clear();
+        match reader.read_until(b'\n', &mut buffer).await {
+            Ok(0) => break,
+            Ok(_) => {
+                while let Some(last) = buffer.last() {
+                    if *last == b'\n' || *last == b'\r' {
+                        buffer.pop();
+                    } else {
+                        break;
+                    }
+                }
+
+                let line = String::from_utf8_lossy(&buffer);
                 let _ = sender.send(EngineEvent::StepLog {
                     step_id: step_id.clone(),
                     line: format!("{tag}: {line}"),
