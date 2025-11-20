@@ -1,5 +1,5 @@
 use super::context::SharedExecutionContext;
-use super::events::{ConfirmPhase,EngineEvent};
+use super::events::{ConfirmPhase, EngineEvent};
 use super::resources::EngineHandles;
 use crate::engine::ConfirmBridge;
 use crate::scenario::{Step, StepKind};
@@ -51,6 +51,7 @@ pub(super) fn run_single_step(
                 &step,
                 confirm,
                 ConfirmPhase::Before,
+                ctx.clone(),
                 &sender,
                 confirm_bridge.clone(),
             )
@@ -99,6 +100,7 @@ pub(super) fn run_single_step(
                             &step,
                             confirm,
                             ConfirmPhase::After,
+                            ctx.clone(),
                             &sender,
                             confirm_bridge.clone(),
                         )

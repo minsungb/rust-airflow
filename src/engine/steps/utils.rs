@@ -1,8 +1,8 @@
 use super::super::context::SharedExecutionContext;
 use super::super::events::EngineEvent;
-use encoding::all::WINDOWS_949;
 use encoding::DecoderTrap;
 use encoding::Encoding;
+use encoding::all::WINDOWS_949;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
@@ -96,7 +96,7 @@ pub(super) async fn pipe_forwarder<R>(
     loop {
         buffer.clear();
         match reader.read_until(b'\n', &mut buffer).await {
-            Ok(0) => break,  // EOF
+            Ok(0) => break, // EOF
             Ok(_) => {
                 while let Some(last) = buffer.last() {
                     if *last == b'\n' || *last == b'\r' {
