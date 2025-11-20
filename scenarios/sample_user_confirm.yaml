@@ -1,0 +1,106 @@
+name: "Complex Dependency Scenario with Shell and Date Confirmation"
+db:
+  default:
+    kind: "oracle"
+    dsn: "ORCLPDB1"
+    user: "APP_USER"
+    password: "secret"
+steps:
+  # 1. 첫 번째 SQL 조회: 현재 날짜 및 연도 추출
+  - id: "sql_get_date"
+    name: "현재 날짜 및 연도 추출"
+    kind: sql
+    sql: "select sysdate, extract(year from sysdate) as current_year from dual"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: []
+    output:
+      - var_name: "current_date"  # sysdate
+      - var_name: "current_year"  # 추출된 연도
+
+  # 2. 날짜에 대한 사용자 컨펌 요청
+  - id: "user_confirm_date"
+    name: "날짜 확인"
+    kind: sql
+    sql: |
+      select '오늘 날짜는 ' || to_char(current_date, 'YYYY-MM-DD') || ' 입니다. 맞습니까?' from dual
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: ["sql_get_date"]
+    confirm:
+      before: true
+      message: "현재 날짜: ${current_date}, 이 날짜로 진행하시겠습니까?"
+      default_answer: "yes"
+    output:
+      - var_name: "user_confirm"
+      # 사용자 선택에 따라 Yes/No 결과를 받아서, 이후 Step 진행 결정
+
+  # 3. 날짜 기반 파라미터로 Shell 명령어 실행 (사용자 컨펌 후)
+  - id: "shell_process_data_with_date"
+    name: "날짜 기반 데이터 처리"
+    kind: shell
+    shell:
+      script: |
+        if [ "${user_confirm}" == "No" ]; then
+          echo "사용자가 날짜를 거부했으므로 작업을 중단합니다."
+          exit 1
+        else
+          echo "현재 날짜는 ${current_date}이고, 연도는 ${current_year}입니다."
+          # 여기에 날짜와 연도를 이용한 데이터 처리 작업 수행
+          # 예시: 데이터베이스에서 특정 날짜 데이터를 추출
+        fi
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 120
+    depends_on: ["user_confirm_date"]
+
+  # 4. 이전 단계에서 날짜를 바탕으로 데이터 처리 완료 확인
+  - id: "sql_data_check"
+    name: "날짜별 데이터 확인"
+    kind: sql
+    sql: |
+      select count(*) from data_table where data_date = to_date('${current_date}', 'YYYY-MM-DD')
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: ["shell_process_data_with_date"]
+
+  # 5. 결과에 대한 확인 및 리포트 생성 (Shell)
+  - id: "shell_generate_report"
+    name: "리포트 생성"
+    kind: shell
+    shell:
+      script: |
+        echo "현재 연도 ${current_year}에 대한 리포트를 생성합니다."
+        # 실제 리포트 생성 작업을 예시로 포함
+        # 리포트 생성 명령어 예시: ./generate_report.sh ${current_year}
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 180
+    depends_on: ["sql_data_check"]
+
+  # 6. 데이터 정리 작업
+  - id: "sql_cleanup"
+    name: "정리 작업"
+    kind: sql
+    sql: "delete from data_table where data_date < sysdate - 30"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: ["shell_generate_report"]
+
+  # 7. 최종 확인 및 상태 점검 (Shell)
+  - id: "shell_final_check"
+    name: "최종 상태 점검"
+    kind: shell
+    shell:
+      script: |
+        echo "최종 상태 점검을 시작합니다."
+        # 예시: 상태 점검을 위한 추가 명령어
+        # 예시 명령어: ./check_status.sh
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: ["sql_cleanup"]

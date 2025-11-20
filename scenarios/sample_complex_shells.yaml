@@ -1,0 +1,177 @@
+name: "Complex Shell Scenario with User Confirmation"
+steps:
+  # 1. 첫 번째 Shell 작업: 현재 날짜와 시간 추출
+  - id: "shell_get_datetime"
+    name: "현재 날짜 및 시간 추출"
+    kind: shell
+    shell:
+      script: |
+        echo "현재 날짜 및 시간: %date% %time%"
+        set current_date=%date:~-10%
+        set current_time=%time:~0,8%
+        echo "날짜: %current_date%, 시간: %current_time%"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: []
+
+  # 2. 날짜에 대한 사용자 컨펌 요청
+  - id: "user_confirm_date"
+    name: "날짜 확인"
+    kind: sql
+    sql: |
+      select '오늘 날짜는 ' || to_char(current_date, 'YYYY-MM-DD') || ' 입니다. 맞습니까?' from dual
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: ["shell_get_datetime"]
+    confirm:
+      before: true
+      message: "현재 날짜: ${current_date}, 이 날짜로 진행하시겠습니까?"
+      default_answer: "yes"
+    output:
+      - var_name: "user_confirm"
+
+  # 3. 날짜 기반 파라미터로 Shell 명령어 실행 (사용자 컨펌 후)
+  - id: "shell_process_data_with_date"
+    name: "날짜 기반 데이터 처리"
+    kind: shell
+    shell:
+      script: |
+        if [ "${user_confirm}" == "No" ]; then
+          echo "사용자가 날짜를 거부했으므로 작업을 중단합니다."
+          exit 1
+        else
+          echo "현재 날짜는 ${current_date}이고, 연도는 ${current_year}입니다."
+          # 여기에 날짜와 연도를 이용한 데이터 처리 작업 수행
+        fi
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 120
+    depends_on: ["user_confirm_date"]
+
+  # 4. 두 번째 데이터 처리 작업 (날짜 확인 후 데이터 처리)
+  - id: "shell_process_data_part2"
+    name: "데이터 추가 처리"
+    kind: shell
+    shell:
+      script: |
+        echo "데이터 추가 처리 시작..."
+        echo "Processing additional data for date ${current_date} and time ${current_time}"
+        timeout /t 3 >nul  # 3초 대기 후
+        echo "데이터 추가 처리 완료"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 120
+    depends_on: ["shell_process_data_with_date"]
+
+  # 5. 파일 생성 (현재 날짜로 파일 생성)
+  - id: "shell_create_file"
+    name: "파일 생성"
+    kind: shell
+    shell:
+      script: |
+        echo "파일 생성 시작..."
+        set file_path=C:\temp\generated_file_%current_date%.txt
+        echo "파일 경로: %file_path%"
+        echo "파일이 생성되었습니다. %current_date%" > "%file_path%"
+        echo "파일 생성 완료"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 120
+    depends_on: ["shell_process_data_part2"]
+
+  # 6. 파일 내용 확인
+  - id: "shell_check_file_content"
+    name: "파일 내용 확인"
+    kind: shell
+    shell:
+      script: |
+        echo "파일 내용 확인 시작..."
+        set file_path=C:\temp\generated_file_%current_date%.txt
+        type "%file_path%"
+        echo "파일 내용 확인 완료"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: ["shell_create_file"]
+
+  # 7. 로그 파일 생성
+  - id: "shell_generate_log_file"
+    name: "로그 파일 생성"
+    kind: shell
+    shell:
+      script: |
+        echo "로그 파일 생성 시작..."
+        set log_file=C:\logs\process_log_%current_date%.log
+        echo "Process started on %current_date% at %current_time%" > "%log_file%"
+        echo "작업 완료 로그 추가" >> "%log_file%"
+        echo "로그 파일 생성 완료"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 120
+    depends_on: ["shell_check_file_content"]
+
+  # 8. 파일 압축 해제
+  - id: "shell_extract_file"
+    name: "압축 해제"
+    kind: shell
+    shell:
+      script: |
+        echo "압축 해제 시작..."
+        set zip_file=C:\temp\generated_file_%current_date%.zip
+        set extract_dir=C:\temp\extracted_files
+        echo "압축 해제할 파일: %zip_file%"
+        mkdir "%extract_dir%"
+        powershell -Command "Expand-Archive -Path %zip_file% -DestinationPath %extract_dir%"
+        echo "압축 해제 완료"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 180
+    depends_on: ["shell_generate_log_file"]
+
+  # 9. 불필요한 파일 삭제
+  - id: "shell_cleanup_files"
+    name: "파일 정리"
+    kind: shell
+    shell:
+      script: |
+        echo "파일 정리 시작..."
+        del /f /q C:\temp\generated_file_%current_date%.txt
+        rmdir /s /q C:\temp\extracted_files
+        echo "파일 정리 완료"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: ["shell_extract_file"]
+
+  # 10. 서버 상태 점검 (Shell)
+  - id: "shell_check_server_status"
+    name: "서버 상태 점검"
+    kind: shell
+    shell:
+      script: |
+        echo "서버 상태 점검 시작..."
+        systeminfo | findstr /i "OS"
+        echo "서버 상태 점검 완료"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: ["shell_cleanup_files"]
+
+  # 11. 최종 보고서 생성 (Shell)
+  - id: "shell_generate_final_report"
+    name: "최종 보고서 생성"
+    kind: shell
+    shell:
+      script: |
+        echo "최종 보고서 생성 시작..."
+        set final_report=C:\temp\final_report_%current_date%.txt
+        echo "최종 결과 보고서 - %current_date%" > "%final_report%"
+        echo "작업 결과를 확인하십시오." >> "%final_report%"
+        type "%final_report%"
+        echo "최종 보고서 생성 완료"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 180
+    depends_on: ["shell_check_server_status"]
