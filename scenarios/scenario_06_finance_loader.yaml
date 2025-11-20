@@ -1,4 +1,4 @@
-name: "sample_finance_job"
+name: "scenario_06_finance_loader"
 steps:
   - id: "01_extract"
     name: "연도 추출 SQL 실행"

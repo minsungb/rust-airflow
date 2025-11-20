@@ -1,0 +1,16 @@
+name: "scenario_03_basic_db_query"
+db:
+  default:
+    kind: "oracle"
+    dsn: "ORCLPDB1"
+    user: "APP_USER"
+    password: "secret"
+steps:
+  - id: "sql_healthcheck"
+    name: "DB 헬스체크"
+    kind: sql
+    sql: "select sysdate as current_time from dual"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 30
+    depends_on: []

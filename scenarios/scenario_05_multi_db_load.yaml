@@ -1,4 +1,4 @@
-name: "sample_db_targets"
+name: "scenario_05_multi_db_load"
 db:
   default:
     kind: oracle
