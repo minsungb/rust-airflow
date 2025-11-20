@@ -11,6 +11,16 @@ use super::utils::log_step;
 use super::utils::pipe_forwarder;
 
 /// 쉘 명령을 실행하고 실시간 로그를 전달한다.
+///
+/// # 인자
+/// - `config`: 쉘 프로그램, 스크립트, 환경 변수 설정을 담은 구성
+/// - `ctx`: 변수 치환에 사용되는 실행 컨텍스트 공유 포인터
+/// - `sender`: 로그 및 이벤트를 내보낼 채널 송신자
+/// - `step_id`: 실행 중인 스텝의 식별자 문자열
+/// - `timeout_duration`: 명령 최대 대기 시간
+///
+/// # 반환값
+/// 성공 시 `Ok(())`를 반환하며, 실행 실패 또는 재시도 초과 시 에러를 반환한다.
 pub(super) async fn run_shell_command(
     config: &ShellConfig,
     ctx: SharedExecutionContext,
@@ -139,6 +149,13 @@ pub(super) async fn run_shell_command(
 }
 
 /// 플랫폼별 사용자 실행 맥락을 적용한다.
+///
+/// # 인자
+/// - `command`: UID/GID를 설정할 프로세스 명령 빌더
+/// - `user`: 실행할 사용자의 계정 이름
+///
+/// # 반환값
+/// UID/GID 설정 성공 시 `Ok(())`, 지원하지 않거나 조회 실패 시 에러를 반환한다.
 fn apply_user_context(command: &mut Command, user: &str) -> anyhow::Result<()> {
     #[cfg(unix)]
     {
@@ -158,6 +175,12 @@ fn apply_user_context(command: &mut Command, user: &str) -> anyhow::Result<()> {
 }
 
 /// /etc/passwd에서 사용자 UID/GID를 조회한다.
+///
+/// # 인자
+/// - `user`: 검색할 사용자 계정명
+///
+/// # 반환값
+/// `(uid, gid)` 튜플을 반환하며, 존재하지 않을 경우 에러를 반환한다.
 #[cfg(unix)]
 fn lookup_unix_user(user: &str) -> anyhow::Result<(u32, u32)> {
     let content = std::fs::read_to_string("/etc/passwd")
