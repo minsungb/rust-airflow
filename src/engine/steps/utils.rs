@@ -1,6 +1,8 @@
 use super::super::context::SharedExecutionContext;
 use super::super::events::EngineEvent;
-use encoding_rs::WINDOWS_949;
+use encoding::all::WINDOWS_949;
+use encoding::DecoderTrap;
+use encoding::Encoding;
 use std::borrow::Cow;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
@@ -94,7 +96,7 @@ pub(super) async fn pipe_forwarder<R>(
     loop {
         buffer.clear();
         match reader.read_until(b'\n', &mut buffer).await {
-            Ok(0) => break,
+            Ok(0) => break,  // EOF
             Ok(_) => {
                 while let Some(last) = buffer.last() {
                     if *last == b'\n' || *last == b'\r' {
@@ -103,8 +105,8 @@ pub(super) async fn pipe_forwarder<R>(
                         break;
                     }
                 }
-
                 let line = decode_log_line(&buffer);
+                // 추가적으로 로그 필터링을 하거나, 오류가 있는 라인을 별도로 처리할 수 있음
                 let _ = sender.send(EngineEvent::StepLog {
                     step_id: step_id.clone(),
                     line: format!("{tag}: {line}"),
@@ -115,7 +117,7 @@ pub(super) async fn pipe_forwarder<R>(
                     step_id: step_id.clone(),
                     line: format!("{tag} 읽기 오류: {err}"),
                 });
-                break;
+                break; // 에러 발생 시 종료
             }
         }
     }
@@ -133,11 +135,12 @@ fn decode_log_line(buffer: &[u8]) -> Cow<'_, str> {
     match std::str::from_utf8(buffer) {
         Ok(valid_utf8) => Cow::Borrowed(valid_utf8),
         Err(_) => {
-            let (decoded, _, had_errors) = WINDOWS_949.decode(buffer);
-            if had_errors {
+            let mut decoded = String::new();
+            let result = WINDOWS_949.decode_to(buffer, DecoderTrap::Ignore, &mut decoded);
+            if result.is_err() {
                 String::from_utf8_lossy(buffer)
             } else {
-                decoded
+                Cow::Owned(decoded)
             }
         }
     }
