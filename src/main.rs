@@ -8,7 +8,7 @@ mod scenario;
 mod theme;
 
 use app::BatchOrchestratorApp;
-use eframe::egui;
+use eframe::{egui, egui_wgpu::wgpu};
 use std::io::Cursor;
 
 /// egui 애플리케이션을 초기화하고 실행하는 진입점입니다.
@@ -21,6 +21,10 @@ fn main() -> eframe::Result<()> {
             .with_app_id("Rust Airflow")
             .with_inner_size([1200.0, 780.0])
             .with_drag_and_drop(true),
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            supported_backends: wgpu::Backends::DX12 | wgpu::Backends::GL,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
