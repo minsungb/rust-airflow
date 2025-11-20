@@ -1,12 +1,19 @@
 use super::super::context::SharedExecutionContext;
 use super::super::events::EngineEvent;
-use futures::StreamExt;
+use encoding::all::WINDOWS_949;
+use encoding::DecoderTrap;
+use encoding::Encoding;
+use std::borrow::Cow;
 use std::path::PathBuf;
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::sync::mpsc::UnboundedSender;
-use tokio_util::codec::{FramedRead, LinesCodec};
 
 /// Step 로그를 전송한다.
+///
+/// # 인자
+/// - `sender`: 로그 이벤트를 내보낼 채널 송신자
+/// - `step_id`: 로그가 속한 스텝의 식별자
+/// - `line`: 전송할 로그 문자열
 pub(super) fn log_step(sender: &UnboundedSender<EngineEvent>, step_id: &str, line: &str) {
     let _ = sender.send(EngineEvent::StepLog {
         step_id: step_id.to_string(),
@@ -15,11 +22,25 @@ pub(super) fn log_step(sender: &UnboundedSender<EngineEvent>, step_id: &str, lin
 }
 
 /// 경로 정보를 보기 좋게 변환한다.
+///
+/// # 인자
+/// - `path`: 문자열로 표현할 파일 경로 객체
+///
+/// # 반환값
+/// 경로를 OS 문자열에서 유니코드로 손실 복원 변환한 문자열
 pub(super) fn display_path(path: &PathBuf) -> String {
     path.to_string_lossy().to_string()
 }
 
 /// 필수 경로 값을 치환한다.
+///
+/// # 인자
+/// - `path`: 템플릿 변수를 포함할 수 있는 경로 객체
+/// - `ctx`: 시나리오 실행 컨텍스트 공유 포인터
+/// - `field`: 오류 메시지용 필드 이름
+///
+/// # 반환값
+/// 치환 완료된 경로 문자열. 치환에 실패하면 에러를 반환한다.
 pub(super) async fn expand_path(
     path: &PathBuf,
     ctx: SharedExecutionContext,
@@ -31,6 +52,14 @@ pub(super) async fn expand_path(
 }
 
 /// 선택 경로 값을 치환한다.
+///
+/// # 인자
+/// - `path`: 존재할 수도 없는 경로 참조
+/// - `ctx`: 시나리오 실행 컨텍스트 공유 포인터
+/// - `field`: 오류 메시지용 필드 이름
+///
+/// # 반환값
+/// 치환된 경로 문자열 옵션. 입력이 없으면 `None`, 실패 시 에러를 반환한다.
 pub(super) async fn expand_option_path(
     path: Option<&PathBuf>,
     ctx: SharedExecutionContext,
@@ -43,6 +72,16 @@ pub(super) async fn expand_option_path(
 }
 
 /// 프로세스 파이프를 읽어 로그 이벤트로 중계한다.
+///
+/// # 인자
+/// - `reader`: STDOUT/STDERR 스트림을 비동기로 읽을 리더
+/// - `sender`: 로그 이벤트를 전달할 채널 송신자
+/// - `step_id`: 로그를 구분하기 위한 스텝 식별자
+/// - `tag`: STDOUT/STDERR 태그 문자열
+///
+/// # 동작
+/// UTF-8로 해석할 수 없는 바이트가 발견되면 Windows-949(구 CP949)로
+/// 재시도하고, 그래도 실패하면 손실 복원 문자열로 전달한다.
 pub(super) async fn pipe_forwarder<R>(
     reader: R,
     sender: UnboundedSender<EngineEvent>,
@@ -51,10 +90,23 @@ pub(super) async fn pipe_forwarder<R>(
 ) where
     R: AsyncRead + Unpin + Send + 'static,
 {
-    let mut lines = FramedRead::new(reader, LinesCodec::new());
-    while let Some(line_result) = lines.next().await {
-        match line_result {
-            Ok(line) => {
+    let mut reader = BufReader::new(reader);
+    let mut buffer = Vec::new();
+
+    loop {
+        buffer.clear();
+        match reader.read_until(b'\n', &mut buffer).await {
+            Ok(0) => break,  // EOF
+            Ok(_) => {
+                while let Some(last) = buffer.last() {
+                    if *last == b'\n' || *last == b'\r' {
+                        buffer.pop();
+                    } else {
+                        break;
+                    }
+                }
+                let line = decode_log_line(&buffer);
+                // 추가적으로 로그 필터링을 하거나, 오류가 있는 라인을 별도로 처리할 수 있음
                 let _ = sender.send(EngineEvent::StepLog {
                     step_id: step_id.clone(),
                     line: format!("{tag}: {line}"),
@@ -65,7 +117,30 @@ pub(super) async fn pipe_forwarder<R>(
                     step_id: step_id.clone(),
                     line: format!("{tag} 읽기 오류: {err}"),
                 });
-                break;
+                break; // 에러 발생 시 종료
+            }
+        }
+    }
+}
+
+/// 로그 라인을 적절한 인코딩으로 변환한다.
+///
+/// # 인자
+/// - `buffer`: STDOUT/STDERR에서 읽은 단일 라인 바이트 슬라이스
+///
+/// # 반환값
+/// UTF-8 또는 Windows-949로 디코딩한 문자열. 두 인코딩 모두 실패하면
+/// 손실 복원된 문자열을 반환한다.
+fn decode_log_line(buffer: &[u8]) -> Cow<'_, str> {
+    match std::str::from_utf8(buffer) {
+        Ok(valid_utf8) => Cow::Borrowed(valid_utf8),
+        Err(_) => {
+            let mut decoded = String::new();
+            let result = WINDOWS_949.decode_to(buffer, DecoderTrap::Ignore, &mut decoded);
+            if result.is_err() {
+                String::from_utf8_lossy(buffer)
+            } else {
+                Cow::Owned(decoded)
             }
         }
     }
