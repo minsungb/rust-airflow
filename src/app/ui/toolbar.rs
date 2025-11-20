@@ -116,12 +116,13 @@ impl BatchOrchestratorApp {
                 {
                     self.editor_save(true);
                 }
-                if ui
-                    .add(PrimaryButton::new(&self.theme, "실행").icon("🚀"))
-                    .clicked()
-                {
-                    self.editor_run_current();
-                }
+                // 시나리오 빌더에 실행 제거
+                // if ui
+                //     .add(PrimaryButton::new(&self.theme, "실행").icon("🚀"))
+                //     .clicked()
+                // {
+                //     self.editor_run_current();
+                // }
             });
         });
     }
