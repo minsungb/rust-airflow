@@ -64,7 +64,6 @@ impl<'a> ScenarioBuilderUi<'a> {
         egui::SidePanel::right("builder_properties")
             .frame(property_frame)
             .resizable(false)
-            .default_width(320.0)
             .show(ctx, |ui| {
                 self.render_properties(ui);
             });
