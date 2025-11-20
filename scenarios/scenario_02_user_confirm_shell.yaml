@@ -1,0 +1,42 @@
+name: "scenario_02_user_confirm_shell"
+steps:
+  - id: "shell_prepare"
+    name: "초기 메시지 출력"
+    kind: shell
+    shell:
+      script: "echo '사용자 컨펌 예시를 시작합니다.'"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 30
+    depends_on: []
+
+  - id: "confirm_run"
+    name: "진행 여부 확인"
+    kind: shell
+    shell:
+      script: "echo '컨펌 결과에 따라 작업이 결정됩니다.'"
+    confirm:
+      before: true
+      message: "샘플 셸 작업을 진행하시겠습니까?"
+      default_answer: "yes"
+    output:
+      - var_name: "confirm_decision"
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 30
+    depends_on: ["shell_prepare"]
+
+  - id: "shell_execute"
+    name: "사용자 입력 기반 실행"
+    kind: shell
+    shell:
+      script: |
+        if [ "${confirm_decision}" = "No" ]; then
+          echo "사용자가 중단을 선택했습니다."
+          exit 1
+        fi
+        echo "사용자가 승인했으므로 작업을 진행합니다."
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 60
+    depends_on: ["confirm_run"]

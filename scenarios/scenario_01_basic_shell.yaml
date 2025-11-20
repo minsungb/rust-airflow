@@ -1,0 +1,13 @@
+name: "scenario_01_basic_shell"
+steps:
+  - id: "shell_hello"
+    name: "환경 확인"
+    kind: shell
+    shell:
+      script: |
+        echo "기본 셸 시나리오 실행"
+        uname -a
+    allow_parallel: false
+    retry: 0
+    timeout_sec: 30
+    depends_on: []

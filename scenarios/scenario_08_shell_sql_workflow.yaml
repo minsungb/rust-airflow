@@ -1,4 +1,4 @@
-name: "Advanced Complex Scenario with Shell and Date Confirmation"
+name: "scenario_08_shell_sql_workflow"
 db:
   default:
     kind: "oracle"
@@ -6,7 +6,6 @@ db:
     user: "APP_USER"
     password: "secret"
 steps:
-  # 1. 첫 번째 SQL 조회: 현재 날짜 및 연도 추출
   - id: "sql_get_date"
     name: "현재 날짜 및 연도 추출"
     kind: sql
@@ -19,7 +18,6 @@ steps:
       - var_name: "current_date"
       - var_name: "current_year"
 
-  # 2. 날짜에 대한 사용자 컨펌 요청
   - id: "user_confirm_date"
     name: "날짜 확인"
     kind: sql
@@ -36,7 +34,6 @@ steps:
     output:
       - var_name: "user_confirm"
 
-  # 3. 날짜 기반 파라미터로 Shell 명령어 실행 (사용자 컨펌 후)
   - id: "shell_process_data_with_date"
     name: "날짜 기반 데이터 처리"
     kind: shell
@@ -54,7 +51,6 @@ steps:
     timeout_sec: 120
     depends_on: ["user_confirm_date"]
 
-  # 4. 두 번째 SQL 조회: 특정 테이블의 데이터 수 조회
   - id: "sql_count_data"
     name: "특정 테이블의 데이터 수 조회"
     kind: sql
@@ -64,7 +60,6 @@ steps:
     timeout_sec: 60
     depends_on: ["shell_process_data_with_date"]
 
-  # 5. 세 번째 SQL 조회: 통계 데이터 조회
   - id: "sql_select_stats"
     name: "통계 데이터 조회"
     kind: sql
@@ -74,7 +69,6 @@ steps:
     timeout_sec: 60
     depends_on: ["shell_process_data_with_date"]
 
-  # 6. 데이터 처리 및 리포트 생성 (Shell)
   - id: "shell_generate_report"
     name: "리포트 생성"
     kind: shell
@@ -82,13 +76,11 @@ steps:
       script: |
         echo "리포트 생성 중: ${current_year} 연도에 대한 데이터 리포트 생성."
         # 예시: 리포트 생성 스크립트 실행
-        # ./generate_report.sh ${current_year}
     allow_parallel: false
     retry: 0
     timeout_sec: 180
     depends_on: ["sql_count_data", "sql_select_stats"]
 
-  # 7. 데이터 점검 (2개의 Step 의존)
   - id: "sql_check_data_integrity"
     name: "데이터 정합성 점검"
     kind: sql
@@ -99,7 +91,6 @@ steps:
     timeout_sec: 60
     depends_on: ["sql_count_data", "shell_generate_report"]
 
-  # 8. 마지막 데이터 정리 작업
   - id: "sql_cleanup"
     name: "불필요한 데이터 정리"
     kind: sql
@@ -109,35 +100,28 @@ steps:
     timeout_sec: 60
     depends_on: ["sql_check_data_integrity"]
 
-  # 9. 최종 상태 점검 (Shell)
   - id: "shell_final_check"
     name: "최종 점검"
     kind: shell
     shell:
       script: |
         echo "최종 상태 점검을 시작합니다."
-        # 예시: 상태 점검을 위한 추가 명령어
-        # ./check_status.sh
     allow_parallel: false
     retry: 0
     timeout_sec: 60
     depends_on: ["sql_cleanup"]
 
-  # 10. 최종 리포트 생성 (Shell)
   - id: "shell_final_report"
     name: "최종 리포트 생성"
     kind: shell
     shell:
       script: |
         echo "최종 리포트를 생성합니다."
-        # 예시: 리포트 생성 명령어
-        # ./generate_final_report.sh
     allow_parallel: false
     retry: 0
     timeout_sec: 180
     depends_on: ["shell_final_check"]
 
-  # 11. 최종 SQL 확인 및 완료
   - id: "sql_final_check"
     name: "최종 결과 확인"
     kind: sql

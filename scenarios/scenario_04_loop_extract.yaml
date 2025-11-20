@@ -1,7 +1,7 @@
-name: "loop_extract_demo"
+name: "scenario_04_loop_extract"
 steps:
   - id: "loop_container"
-    name: "Loop with Extract"
+    name: "파일 반복 및 값 추출"
     kind: loop
     loop:
       for_each_glob: "data/*.txt"
